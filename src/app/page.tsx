@@ -29,18 +29,22 @@ export default function HomePage() {
 
   async function loadTrips() {
     setLoading(true);
-    const memberships = await getAllMemberships();
-    if (memberships.length === 0) { setTrips([]); setLoading(false); return; }
+    try {
+      const memberships = await getAllMemberships();
+      if (memberships.length === 0) { setTrips([]); setLoading(false); return; }
 
-    const tripIds = Array.from(new Set(memberships.map(m => m.trip_id)));
-    const cards: TripCard[] = [];
-    for (const tripId of tripIds) {
-      const { data: trip } = await supabase.from("trips").select("*").eq("id", tripId).single();
-      if (!trip) continue;
-      const { count } = await supabase.from("trip_members").select("*", { count: "exact", head: true }).eq("trip_id", tripId);
-      cards.push({ trip: trip as Trip, memberCount: count || 0 });
+      const tripIds = Array.from(new Set(memberships.map(m => m.trip_id)));
+      const cards: TripCard[] = [];
+      for (const tripId of tripIds) {
+        const { data: trip } = await supabase.from("trips").select("*").eq("id", tripId).single();
+        if (!trip) continue;
+        const { count } = await supabase.from("trip_members").select("*", { count: "exact", head: true }).eq("trip_id", tripId);
+        cards.push({ trip: trip as Trip, memberCount: count || 0 });
+      }
+      setTrips(cards);
+    } catch {
+      setTrips([]);
     }
-    setTrips(cards);
     setLoading(false);
   }
 

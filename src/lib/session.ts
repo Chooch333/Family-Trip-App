@@ -9,21 +9,18 @@ export const AVATAR_COLORS = [
   "#5DCAA5", "#85B7EB", "#ED93B1", "#F0997B", "#AFA9EC", "#EF9F27", "#5DCAA5", "#85B7EB",
 ];
 
-function migrateOldSession(): void {
-  if (typeof window === "undefined") return;
-  const old = localStorage.getItem(OLD_SESSION_KEY);
-  if (old) {
-    const tokens = getSessionTokens();
-    if (!tokens.includes(old)) tokens.push(old);
-    localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
-    localStorage.removeItem(OLD_SESSION_KEY);
-  }
-}
-
 export function getSessionTokens(): string[] {
   if (typeof window === "undefined") return [];
-  migrateOldSession();
   try {
+    // Migrate old single-token format on first access
+    const old = localStorage.getItem(OLD_SESSION_KEY);
+    if (old) {
+      const existing = localStorage.getItem(TOKENS_KEY);
+      const tokens: string[] = existing ? JSON.parse(existing) : [];
+      if (!tokens.includes(old)) tokens.push(old);
+      localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
+      localStorage.removeItem(OLD_SESSION_KEY);
+    }
     const raw = localStorage.getItem(TOKENS_KEY);
     if (!raw) return [];
     return JSON.parse(raw) as string[];
