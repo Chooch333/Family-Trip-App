@@ -2,25 +2,56 @@ import { supabase } from "./supabase";
 import { nanoid } from "nanoid";
 import type { TripMember } from "./database.types";
 
-const SESSION_KEY = "trip_session_token";
+const TOKENS_KEY = "trip_session_tokens";
+const OLD_SESSION_KEY = "trip_session_token";
 
 export const AVATAR_COLORS = [
   "#5DCAA5", "#85B7EB", "#ED93B1", "#F0997B", "#AFA9EC", "#EF9F27", "#5DCAA5", "#85B7EB",
 ];
 
+function migrateOldSession(): void {
+  if (typeof window === "undefined") return;
+  const old = localStorage.getItem(OLD_SESSION_KEY);
+  if (old) {
+    const tokens = getSessionTokens();
+    if (!tokens.includes(old)) tokens.push(old);
+    localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
+    localStorage.removeItem(OLD_SESSION_KEY);
+  }
+}
+
+export function getSessionTokens(): string[] {
+  if (typeof window === "undefined") return [];
+  migrateOldSession();
+  try {
+    const raw = localStorage.getItem(TOKENS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as string[];
+  } catch {
+    return [];
+  }
+}
+
+export function addSessionToken(token: string): void {
+  if (typeof window === "undefined") return;
+  const tokens = getSessionTokens();
+  if (!tokens.includes(token)) tokens.push(token);
+  localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens));
+}
+
 export function getSessionToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(SESSION_KEY);
+  const tokens = getSessionTokens();
+  return tokens.length > 0 ? tokens[tokens.length - 1] : null;
 }
 
 export function setSessionToken(token: string): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(SESSION_KEY, token);
+  addSessionToken(token);
 }
 
 export function clearSession(): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(TOKENS_KEY);
+  localStorage.removeItem(OLD_SESSION_KEY);
 }
 
 export async function getCurrentMember(): Promise<TripMember | null> {
@@ -32,6 +63,27 @@ export async function getCurrentMember(): Promise<TripMember | null> {
   return data as TripMember;
 }
 
+export async function getMemberForTrip(tripId: string): Promise<TripMember | null> {
+  const tokens = getSessionTokens();
+  if (tokens.length === 0) return null;
+  for (const token of tokens) {
+    const { data } = await supabase.from("trip_members").select("*").eq("session_token", token).eq("trip_id", tripId).single();
+    if (data) return data as TripMember;
+  }
+  return null;
+}
+
+export async function getAllMemberships(): Promise<TripMember[]> {
+  const tokens = getSessionTokens();
+  if (tokens.length === 0) return [];
+  const members: TripMember[] = [];
+  for (const token of tokens) {
+    const { data } = await supabase.from("trip_members").select("*").eq("session_token", token).single();
+    if (data) members.push(data as TripMember);
+  }
+  return members;
+}
+
 export async function joinTrip(
   inviteCode: string, displayName: string
 ): Promise<{ member: TripMember; token: string } | { error: string }> {
@@ -40,8 +92,8 @@ export async function joinTrip(
 
   const { data: existing } = await supabase.from("trip_members").select("id, session_token").eq("trip_id", trip.id).eq("display_name", displayName).single();
   if (existing?.session_token) {
-    setSessionToken(existing.session_token);
-    const member = await getCurrentMember();
+    addSessionToken(existing.session_token);
+    const member = await getMemberForTrip(trip.id);
     if (member) return { member, token: existing.session_token };
   }
 
@@ -58,7 +110,7 @@ export async function joinTrip(
 
   if (memberError || !member) return { error: "Failed to join trip. Please try again." };
   if ((count || 0) === 0) await supabase.from("trips").update({ created_by: member.id }).eq("id", trip.id);
-  setSessionToken(sessionToken);
+  addSessionToken(sessionToken);
   return { member: member as TripMember, token: sessionToken };
 }
 
@@ -81,6 +133,6 @@ export async function createTrip(
   if (memberError || !member) return { error: "Trip created but failed to add you. Please try again." };
 
   await supabase.from("trips").update({ created_by: member.id }).eq("id", trip.id);
-  setSessionToken(sessionToken);
+  addSessionToken(sessionToken);
   return { tripId: trip.id, inviteCode, member: member as TripMember };
 }

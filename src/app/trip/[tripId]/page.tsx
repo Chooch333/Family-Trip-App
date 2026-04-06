@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { getCurrentMember } from "@/lib/session";
+import { getMemberForTrip } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
 import type { Trip, TripMember, Day, Stop, Vote, Proposal } from "@/lib/database.types";
 
@@ -26,8 +26,8 @@ export default function TripDashboard() {
 
   useEffect(() => {
     async function load() {
-      const member = await getCurrentMember();
-      if (!member || member.trip_id !== tripId) { router.replace(`/trip/${tripId}/invite`); return; }
+      const member = await getMemberForTrip(tripId);
+      if (!member) { router.replace(`/trip/${tripId}/invite`); return; }
       setCurrentMember(member);
       const { data: tripData } = await supabase.from("trips").select("*").eq("id", tripId).single();
       if (tripData) setTrip(tripData as Trip);
@@ -94,9 +94,16 @@ export default function TripDashboard() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 flex-shrink-0">
-          <div>
-            <h1 className="text-[15px] font-semibold text-gray-900">{trip.name}</h1>
-            <p className="text-[11px] text-gray-500">{members.length} travelers · {stops.length} stops</p>
+          <div className="flex items-center gap-2.5">
+            <button onClick={() => router.push("/")} className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center hover:bg-emerald-600 transition-colors flex-shrink-0" title="Home">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
+              </svg>
+            </button>
+            <div>
+              <h1 className="text-[15px] font-semibold text-gray-900">{trip.name}</h1>
+              <p className="text-[11px] text-gray-500">{members.length} travelers · {stops.length} stops</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {isOrganizer && <div className="flex gap-1">
