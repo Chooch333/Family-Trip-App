@@ -20,10 +20,10 @@ export default function InvitePage() {
     async function init() {
       const member = await getCurrentMember();
       if (member && member.trip_id === tripId) { router.replace(`/trip/${tripId}`); return; }
-      const { data: trip } = await supabase.from("trips").select("name, invite_code").eq("id", tripId).single();
+      const { data: trip } = await supabase.from("trips").select("*").eq("id", tripId).single();
       if (!trip) { setError("Trip not found."); setLoading(false); return; }
       setTripName(trip.name); setInviteCode(trip.invite_code);
-      const { data: members } = await supabase.from("trip_members").select("display_name").eq("trip_id", tripId);
+      const { data: members } = await supabase.from("trip_members").select("*").eq("trip_id", tripId);
       if (members) setMemberNames(members.map(m => m.display_name));
       setLoading(false);
     }
