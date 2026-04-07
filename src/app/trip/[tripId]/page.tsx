@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { getMemberForTrip } from "@/lib/session";
@@ -8,13 +8,13 @@ import type { Trip, TripMember, Day, Stop, Vote, Proposal } from "@/lib/database
 
 type ViewId = "itinerary" | "map" | "votes" | "ai" | "journal";
 
-// --- Dynamic color gradient: green → teal → cyan → blue → indigo → purple ---
+// --- Dynamic color gradient: forest green → teal → cyan → blue → indigo → purple/rose ---
 function generateDayColors(count: number): string[] {
   if (count <= 0) return [];
-  if (count === 1) return ["#1D9E75"];
-  const hueStops = [160, 180, 195, 220, 250, 280];
-  const satStops = [65, 60, 55, 60, 55, 50];
-  const litStops = [38, 42, 44, 46, 42, 40];
+  if (count === 1) return ["hsl(145, 55%, 33%)"];
+  const hueStops = [145, 165, 180, 195, 220, 250, 280, 310];
+  const satStops = [55, 60, 55, 50, 55, 50, 50, 45];
+  const litStops = [33, 38, 40, 42, 42, 40, 38, 38];
   const colors: string[] = [];
   for (let i = 0; i < count; i++) {
     const t = i / (count - 1);
@@ -28,6 +28,24 @@ function generateDayColors(count: number): string[] {
     colors.push(`hsl(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%)`);
   }
   return colors;
+}
+
+// --- Stop type badge helper ---
+function getStopBadge(stop: Stop): { label: string; bg: string; text: string } | null {
+  const name = stop.name.toLowerCase();
+  const desc = (stop.description || "").toLowerCase();
+  const tags = Array.isArray(stop.tags) ? stop.tags.map((t: string) => t.toLowerCase()) : [];
+  const all = `${name} ${desc} ${tags.join(" ")}`;
+
+  if (all.match(/\b(breakfast|lunch|dinner|restaurant|cafe|coffee|eat|food|bistro|pizz|taco|bakery|brunch|gelato|ice cream)\b/))
+    return { label: "Food", bg: "bg-orange-100", text: "text-orange-700" };
+  if (all.match(/\b(walk|hike|trail|stroll|park|garden|beach|nature|waterfall)\b/))
+    return { label: "Walking", bg: "bg-green-100", text: "text-green-700" };
+  if (all.match(/\b(museum|gallery|castle|monument|cathedral|church|temple|ruins|historic|tour)\b/))
+    return { label: "Visit", bg: "bg-blue-100", text: "text-blue-700" };
+  if (all.match(/\b(shop|market|store|souvenir|mall|boutique)\b/))
+    return { label: "Shopping", bg: "bg-pink-100", text: "text-pink-700" };
+  return null;
 }
 
 // --- Leaflet Map (dynamic, SSR-safe) ---
@@ -65,16 +83,20 @@ export default function TripDashboard() {
   const [expandedStop, setExpandedStop] = useState<string | null>(null);
   const [pulsingStop, setPulsingStop] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [mapFitMode, setMapFitMode] = useState<"day" | "all">("day");
+  // Lightbox state
+  const [lightboxStop, setLightboxStop] = useState<Stop | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const stopRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const dayColors = generateDayColors(days.length);
 
-  // Get color for a day by its index
   const getDayColor = useCallback((dayIdx: number) => {
-    return dayColors[dayIdx] || "#1D9E75";
+    return dayColors[dayIdx] || "hsl(145, 55%, 33%)";
   }, [dayColors]);
 
-  // Find day index for a stop
   const getDayIdxForStop = useCallback((stop: Stop) => {
     return days.findIndex(d => d.id === stop.day_id);
   }, [days]);
@@ -259,12 +281,18 @@ Rules:
     setTimeout(() => setPulsingStop(null), 800);
   }
 
-  // Handle map pin click — select day and highlight stop
+  // Handle map pin click — select day, highlight stop, scroll to it
   function handleMapPinClick(stop: Stop) {
     const dayIdx = getDayIdxForStop(stop);
     if (dayIdx >= 0) setActiveDay(dayIdx);
     setExpandedStop(stop.id);
     triggerPulse(stop.id);
+    setMapFitMode("day");
+    // Scroll stop into view after a brief delay for re-render
+    setTimeout(() => {
+      const el = stopRefs.current.get(stop.id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
   }
 
   // Handle stop card click — expand and pulse
@@ -273,10 +301,47 @@ Rules:
     triggerPulse(stop.id);
   }
 
+  // Lightbox navigation
+  function openLightbox(stop: Stop, photoIndex: number) {
+    setLightboxStop(stop);
+    setLightboxIndex(photoIndex);
+  }
+  function closeLightbox() {
+    setLightboxStop(null);
+    setLightboxIndex(0);
+  }
+  function lightboxPrev() {
+    if (!lightboxStop?.photos) return;
+    const photos = lightboxStop.photos as { url: string }[];
+    setLightboxIndex((lightboxIndex - 1 + photos.length) % photos.length);
+  }
+  function lightboxNext() {
+    if (!lightboxStop?.photos) return;
+    const photos = lightboxStop.photos as { url: string }[];
+    setLightboxIndex((lightboxIndex + 1) % photos.length);
+  }
+
+  // Keyboard nav for lightbox
+  useEffect(() => {
+    if (!lightboxStop) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") closeLightbox();
+      if (e.key === "ArrowLeft") lightboxPrev();
+      if (e.key === "ArrowRight") lightboxNext();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [lightboxStop, lightboxIndex]);
+
   // Scroll chat to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, generatingItinerary]);
+
+  // When activeDay changes, set map to day fit mode
+  useEffect(() => {
+    setMapFitMode("day");
+  }, [activeDay]);
 
   // Load data
   useEffect(() => {
@@ -331,8 +396,32 @@ Rules:
   const onlineMembers = members.filter(m => m.is_online);
   const stopsWithCoords = stops.filter(s => s.latitude && s.longitude);
 
+  const lightboxPhotos = lightboxStop?.photos ? (lightboxStop.photos as { url: string; attribution?: string }[]) : [];
+
   return (
     <div className="h-screen flex bg-white overflow-hidden">
+      {/* Lightbox overlay */}
+      {lightboxStop && lightboxPhotos.length > 0 && (
+        <div className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center" onClick={closeLightbox}>
+          <div className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
+            <img src={lightboxPhotos[lightboxIndex]?.url} alt="" className="max-w-full max-h-[85vh] object-contain rounded-lg" />
+            {/* Close button */}
+            <button onClick={closeLightbox} className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-lg">&times;</button>
+            {/* Counter */}
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-3 py-1 rounded-full">
+              {lightboxIndex + 1} / {lightboxPhotos.length}
+            </div>
+            {/* Prev/Next */}
+            {lightboxPhotos.length > 1 && (
+              <>
+                <button onClick={lightboxPrev} className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-xl">&lsaquo;</button>
+                <button onClick={lightboxNext} className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-xl">&rsaquo;</button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <div className="hidden md:flex w-[52px] flex-col items-center py-3 gap-1 border-r border-gray-100 bg-gray-50/50 flex-shrink-0">
         {([
@@ -384,16 +473,28 @@ Rules:
         <div className="flex flex-1 min-h-0">
           {/* Left panel */}
           <div className="w-full md:w-[55%] md:border-r border-gray-100 flex flex-col overflow-hidden">
-            {/* Day tabs — fixed above content, no overlap */}
-            <div className="flex gap-1 px-3 py-2 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-center z-10 bg-white relative">
-              {days.map((day, idx) => (
-                <button key={day.id} onClick={() => setActiveDay(idx)} className="px-3 py-1 rounded-full text-[11px] whitespace-nowrap transition-colors flex-shrink-0"
-                  style={idx === activeDay ? { backgroundColor: getDayColor(idx), color: "white", fontWeight: 600 } : { backgroundColor: "#f5f5f3", color: "#888" }}>
-                  Day {day.day_number}{day.title ? ` · ${day.title}` : ""}
-                </button>
-              ))}
+            {/* Day tabs — fully above content with no overlap */}
+            <div className="flex gap-1.5 px-3 py-2.5 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-center bg-white" style={{ zIndex: 5 }}>
+              {days.map((day, idx) => {
+                const color = getDayColor(idx);
+                const isActive = idx === activeDay;
+                return (
+                  <button key={day.id} onClick={() => setActiveDay(idx)}
+                    className="px-3 py-1.5 rounded-full text-[11px] whitespace-nowrap transition-all flex-shrink-0 font-medium"
+                    style={{
+                      backgroundColor: color,
+                      color: "white",
+                      opacity: isActive ? 1 : 0.7,
+                      fontWeight: isActive ? 700 : 500,
+                      boxShadow: isActive ? "0 2px 8px rgba(0,0,0,0.15)" : "none",
+                      transform: isActive ? "scale(1.05)" : "scale(1)",
+                    }}>
+                    Day {day.day_number}{day.title ? ` \u00b7 ${day.title}` : ""}
+                  </button>
+                );
+              })}
               {days.length === 0 && <span className="text-[11px] text-gray-400 py-1">No days yet — create your itinerary to get started</span>}
-              <button onClick={() => setShowAddDay(true)} className="px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap transition-colors flex-shrink-0 border border-dashed border-gray-300 text-gray-500 hover:border-emerald-400 hover:text-emerald-600">+ Add Day</button>
+              <button onClick={() => setShowAddDay(true)} className="px-2.5 py-1.5 rounded-full text-[11px] whitespace-nowrap transition-colors flex-shrink-0 border border-dashed border-gray-300 text-gray-500 hover:border-emerald-400 hover:text-emerald-600">+ Add Day</button>
             </div>
 
             {showAddDay && (
@@ -492,8 +593,10 @@ Rules:
                     const upVotes = stopVotes.filter(v => v.vote === 1);
                     const isExpanded = expandedStop === stop.id;
                     const activeDayColor = getDayColor(activeDay);
+                    const badge = getStopBadge(stop);
+                    const photos = stop.photos && Array.isArray(stop.photos) ? (stop.photos as { url: string; attribution?: string }[]) : [];
                     return (
-                      <div key={stop.id}>
+                      <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }}>
                         {idx > 0 && stop.transit_note && (
                           <div className="flex items-center gap-2 py-1 px-2">
                             <div className="flex-1 h-px bg-gray-100" /><span className="text-[10px] text-gray-400">{stop.transit_note}</span><div className="flex-1 h-px bg-gray-100" />
@@ -503,12 +606,17 @@ Rules:
                           className={`bg-white rounded-lg border transition-colors mb-1.5 overflow-hidden cursor-pointer ${isExpanded ? "border-gray-300 shadow-sm" : "border-gray-100 hover:border-gray-200"}`}
                           onClick={() => handleStopCardClick(stop)}
                         >
-                          {/* Collapsed header — always visible */}
+                          {/* Collapsed header */}
                           <div className="flex items-center gap-2 px-3 py-2.5">
                             <span className="text-gray-300 text-[10px] drag-handle">&#x2630;</span>
                             <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: activeDayColor }} />
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium text-[13px] text-gray-900 truncate">{stop.name}</div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-medium text-[13px] text-gray-900 truncate">{stop.name}</span>
+                                {badge && (
+                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${badge.bg} ${badge.text} flex-shrink-0`}>{badge.label}</span>
+                                )}
+                              </div>
                               <div className="text-[10px] text-gray-500">
                                 {stop.start_time ? stop.start_time.slice(0, 5) : "TBD"} · {stop.duration_minutes} min
                                 {stop.cost_estimate != null && Number(stop.cost_estimate) > 0 && ` · $${Number(stop.cost_estimate).toFixed(0)}`}
@@ -529,7 +637,6 @@ Rules:
                           {/* Expanded content */}
                           {isExpanded && (
                             <div className="px-3 pb-3 border-t border-gray-50" onClick={e => e.stopPropagation()}>
-                              {/* Description */}
                               {stop.description && (
                                 <p className="text-[12px] text-gray-600 leading-relaxed mt-2 mb-2">{stop.description}</p>
                               )}
@@ -558,31 +665,26 @@ Rules:
                                   </span>
                                 )}
                               </div>
-                              {/* Photo gallery */}
-                              <div className="mb-1">
-                                <div className="w-full h-32 rounded-lg bg-gray-100 flex items-center justify-center mb-1.5 overflow-hidden">
-                                  {stop.photos && Array.isArray(stop.photos) && stop.photos.length > 0 ? (
-                                    <img src={(stop.photos[0] as { url: string }).url} alt={stop.name} className="w-full h-full object-cover" />
-                                  ) : (
-                                    <div className="text-center">
-                                      <svg className="w-6 h-6 text-gray-300 mx-auto mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                      </svg>
-                                      <p className="text-[10px] text-gray-400">No photos yet</p>
+                              {/* Photo gallery — horizontal scroll */}
+                              {photos.length > 0 ? (
+                                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                                  {photos.map((photo, pIdx) => (
+                                    <div key={pIdx} className="flex-shrink-0 w-36 h-24 rounded-lg overflow-hidden cursor-pointer border border-gray-200 hover:border-gray-400 transition-colors"
+                                      onClick={() => openLightbox(stop, pIdx)}>
+                                      <img src={photo.url} alt={`${stop.name} ${pIdx + 1}`} className="w-full h-full object-cover" />
                                     </div>
-                                  )}
+                                  ))}
                                 </div>
-                                {/* Thumbnail strip */}
-                                {stop.photos && Array.isArray(stop.photos) && stop.photos.length > 1 && (
-                                  <div className="flex gap-1 overflow-x-auto pb-1">
-                                    {(stop.photos as { url: string }[]).map((photo, pIdx) => (
-                                      <div key={pIdx} className="w-12 h-12 rounded-md overflow-hidden flex-shrink-0 border border-gray-200">
-                                        <img src={photo.url} alt="" className="w-full h-full object-cover" />
-                                      </div>
-                                    ))}
+                              ) : (
+                                <div className="w-full h-20 rounded-lg bg-gray-100 flex items-center justify-center">
+                                  <div className="text-center">
+                                    <svg className="w-5 h-5 text-gray-300 mx-auto mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                    </svg>
+                                    <p className="text-[9px] text-gray-400">No photos yet</p>
                                   </div>
-                                )}
-                              </div>
+                                </div>
+                              )}
                             </div>
                           )}
                         </div>
@@ -646,14 +748,25 @@ Rules:
           <div className="hidden md:flex md:w-[45%] flex-col overflow-hidden">
             <div className="flex-1 relative">
               {stopsWithCoords.length > 0 ? (
-                <TripMap
-                  stops={stops}
-                  days={days}
-                  activeDay={activeDay}
-                  dayColors={dayColors}
-                  pulsingStop={pulsingStop}
-                  onPinClick={handleMapPinClick}
-                />
+                <>
+                  <TripMap
+                    stops={stops}
+                    days={days}
+                    activeDay={activeDay}
+                    dayColors={dayColors}
+                    pulsingStop={pulsingStop}
+                    selectedStop={expandedStop}
+                    fitMode={mapFitMode}
+                    onPinClick={handleMapPinClick}
+                  />
+                  {/* Full map button */}
+                  <button
+                    onClick={() => setMapFitMode("all")}
+                    className="absolute top-3 right-3 z-[1000] px-2.5 py-1.5 rounded-lg bg-white/90 backdrop-blur-sm border border-gray-200 text-[11px] font-medium text-gray-700 hover:bg-white hover:border-gray-300 transition-colors shadow-sm"
+                  >
+                    Full map
+                  </button>
+                </>
               ) : (
                 <div className="flex-1 h-full bg-gray-100 flex items-center justify-center">
                   <div className="text-center">
