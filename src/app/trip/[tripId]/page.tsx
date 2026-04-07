@@ -470,48 +470,48 @@ Rules:
           </div>
         </div>
 
+        {/* Day tabs — full width across both panels */}
+        <div className="flex gap-1.5 px-3 py-2.5 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-center bg-white" style={{ zIndex: 5 }}>
+          {days.map((day, idx) => {
+            const color = getDayColor(idx);
+            const isActive = idx === activeDay;
+            return (
+              <button key={day.id} onClick={() => setActiveDay(idx)}
+                className="px-3 py-1.5 rounded-full text-[11px] whitespace-nowrap transition-all flex-shrink-0 font-medium"
+                style={{
+                  backgroundColor: color,
+                  color: "white",
+                  opacity: isActive ? 1 : 0.7,
+                  fontWeight: isActive ? 700 : 500,
+                  boxShadow: isActive ? "0 2px 8px rgba(0,0,0,0.15)" : "none",
+                  transform: isActive ? "scale(1.05)" : "scale(1)",
+                }}>
+                Day {day.day_number}{day.title ? ` \u00b7 ${day.title}` : ""}
+              </button>
+            );
+          })}
+          {days.length === 0 && <span className="text-[11px] text-gray-400 py-1">No days yet — create your itinerary to get started</span>}
+          <button onClick={() => setShowAddDay(true)} className="px-2.5 py-1.5 rounded-full text-[11px] whitespace-nowrap transition-colors flex-shrink-0 border border-dashed border-gray-300 text-gray-500 hover:border-emerald-400 hover:text-emerald-600">+ Add Day</button>
+        </div>
+
+        {showAddDay && (
+          <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
+            <div className="flex gap-2 items-center">
+              <input type="text" value={newDayTitle} onChange={e => setNewDayTitle(e.target.value)} placeholder="Day title (e.g. Traverse City)" autoFocus
+                className="flex-1 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
+                onKeyDown={e => e.key === "Enter" && handleAddDay()} />
+              <button onClick={handleAddDay} disabled={addingDay || !newDayTitle.trim()}
+                className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                {addingDay ? "Adding..." : "Add"}
+              </button>
+              <button onClick={() => { setShowAddDay(false); setNewDayTitle(""); }} className="px-2 py-1.5 rounded-lg text-gray-400 text-[11px] hover:text-gray-600 transition-colors">Cancel</button>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-1 min-h-0">
           {/* Left panel */}
           <div className="w-full md:w-[55%] md:border-r border-gray-100 flex flex-col overflow-hidden">
-            {/* Day tabs — fully above content with no overlap */}
-            <div className="flex gap-1.5 px-3 py-2.5 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-center bg-white" style={{ zIndex: 5 }}>
-              {days.map((day, idx) => {
-                const color = getDayColor(idx);
-                const isActive = idx === activeDay;
-                return (
-                  <button key={day.id} onClick={() => setActiveDay(idx)}
-                    className="px-3 py-1.5 rounded-full text-[11px] whitespace-nowrap transition-all flex-shrink-0 font-medium"
-                    style={{
-                      backgroundColor: color,
-                      color: "white",
-                      opacity: isActive ? 1 : 0.7,
-                      fontWeight: isActive ? 700 : 500,
-                      boxShadow: isActive ? "0 2px 8px rgba(0,0,0,0.15)" : "none",
-                      transform: isActive ? "scale(1.05)" : "scale(1)",
-                    }}>
-                    Day {day.day_number}{day.title ? ` \u00b7 ${day.title}` : ""}
-                  </button>
-                );
-              })}
-              {days.length === 0 && <span className="text-[11px] text-gray-400 py-1">No days yet — create your itinerary to get started</span>}
-              <button onClick={() => setShowAddDay(true)} className="px-2.5 py-1.5 rounded-full text-[11px] whitespace-nowrap transition-colors flex-shrink-0 border border-dashed border-gray-300 text-gray-500 hover:border-emerald-400 hover:text-emerald-600">+ Add Day</button>
-            </div>
-
-            {showAddDay && (
-              <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
-                <div className="flex gap-2 items-center">
-                  <input type="text" value={newDayTitle} onChange={e => setNewDayTitle(e.target.value)} placeholder="Day title (e.g. Traverse City)" autoFocus
-                    className="flex-1 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
-                    onKeyDown={e => e.key === "Enter" && handleAddDay()} />
-                  <button onClick={handleAddDay} disabled={addingDay || !newDayTitle.trim()}
-                    className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                    {addingDay ? "Adding..." : "Add"}
-                  </button>
-                  <button onClick={() => { setShowAddDay(false); setNewDayTitle(""); }} className="px-2 py-1.5 rounded-lg text-gray-400 text-[11px] hover:text-gray-600 transition-colors">Cancel</button>
-                </div>
-              </div>
-            )}
-
             <div className="flex-1 overflow-y-auto px-3 py-2">
               {days.length === 0 ? (
                 /* AI Chat — empty trip experience */
