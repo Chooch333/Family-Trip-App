@@ -154,3 +154,11 @@ create policy "Allow all on journal_entries" on public.journal_entries for all u
 -- if the tables already exist:
 ALTER TABLE public.stops ADD COLUMN stop_type text default 'visit' CHECK (stop_type IN ('visit', 'food', 'transit', 'walk_by', 'guided_tour'));
 ALTER TABLE public.days ADD COLUMN narrative text;
+
+-- MIGRATION: Intake wizard fields on trips
+ALTER TABLE public.trips ADD COLUMN destination text;
+ALTER TABLE public.trips ADD COLUMN duration text;
+ALTER TABLE public.trips ADD COLUMN group_type text;
+ALTER TABLE public.trips ADD COLUMN group_detail text;
+ALTER TABLE public.trips ADD COLUMN interests text;
+ALTER TABLE public.trips ADD COLUMN cover_image_url text;
