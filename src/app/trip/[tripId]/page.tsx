@@ -642,8 +642,8 @@ Rules:
                     const bgColor = dayColor.replace("hsl(", "hsla(").replace(")", ", 0.12)");
                     const borderColor = dayColor.replace("hsl(", "hsla(").replace(")", ", 0.25)");
                     return (
-                      <div className="mb-3 rounded-lg px-3.5 py-3 border" style={{ backgroundColor: bgColor, borderColor }}>
-                        <p className="text-[13px] italic leading-relaxed" style={{ color: dayColor, fontWeight: 500 }}>{days[activeDay].narrative}</p>
+                      <div className="mb-3 rounded-lg px-4 py-3.5 border" style={{ backgroundColor: bgColor, borderColor }}>
+                        <p className="text-[14px] leading-relaxed text-gray-800" style={{ fontWeight: 500 }}>{days[activeDay].narrative}</p>
                       </div>
                     );
                   })()}
