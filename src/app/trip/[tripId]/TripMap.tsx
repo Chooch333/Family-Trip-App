@@ -193,7 +193,7 @@ function MapPanel({
             const isSelected = selectedStop === stop.id;
             const color = dayColors[dayIdx] || "#1D9E75";
             const radius = isActiveDay ? 14 : 10;
-            const displayRadius = isPulsing ? 22 : (isSelected ? 16 : radius);
+            const displayRadius = isPulsing ? 22 : (isSelected ? 18 : radius);
             const fillOpacity = isActiveDay ? 0.9 : 0.6;
             const strokeWeight = isActiveDay ? 2.5 : 1.5;
 
@@ -203,10 +203,10 @@ function MapPanel({
                 center={[stop.latitude!, stop.longitude!]}
                 radius={displayRadius}
                 pathOptions={{
-                  fillColor: color,
-                  color: "#fff",
-                  weight: isSelected ? 3 : strokeWeight,
-                  fillOpacity: isPulsing ? 0.7 : fillOpacity,
+                  fillColor: isSelected ? "#fff" : color,
+                  color: isSelected ? color : "#fff",
+                  weight: isSelected ? 4 : strokeWeight,
+                  fillOpacity: isPulsing ? 0.7 : (isSelected ? 0.95 : fillOpacity),
                   className: isPulsing ? "pin-pulse" : "",
                 }}
                 eventHandlers={{ click: () => onPinClick(stop) }}

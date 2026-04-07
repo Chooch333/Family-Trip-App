@@ -666,11 +666,12 @@ Rules:
                             const upVotes = stopVotes.filter(v => v.vote === 1);
                             const badge = getStopBadge(stop);
 
+                            const isSelected = expandedStop === stop.id;
                             return (
                               <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }}
-                                className="bg-white rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all overflow-hidden flex flex-col"
-                                style={{ width: "calc(50% - 5px)", minWidth: 220, maxWidth: 286, height: 338 }}
-                                onClick={() => triggerPulse(stop.id)}>
+                                className={`bg-white rounded-xl border-2 transition-all overflow-hidden flex flex-col ${isSelected ? "shadow-md" : "hover:shadow-sm"}`}
+                                style={{ width: "calc(50% - 5px)", minWidth: 220, maxWidth: 286, height: 338, borderColor: isSelected ? activeDayColor : "#f3f4f6" }}
+                                onClick={() => { setExpandedStop(stop.id); triggerPulse(stop.id); }}>
                                 {/* Color bar top */}
                                 <div className="h-2 w-full flex-shrink-0" style={{ backgroundColor: activeDayColor }} />
                                 <div className="px-3.5 py-3 flex flex-col flex-1 min-h-0">
