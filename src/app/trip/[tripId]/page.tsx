@@ -365,9 +365,10 @@ Rules:
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, generatingItinerary]);
 
-  // When activeDay changes, set map to day fit mode
+  // When activeDay changes, set map to day fit mode and deselect stop
   useEffect(() => {
     setMapFitMode("day");
+    setExpandedStop(null);
   }, [activeDay]);
 
   // Load data
