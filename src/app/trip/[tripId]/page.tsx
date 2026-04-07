@@ -647,42 +647,48 @@ Rules:
                           className={`bg-white rounded-lg border transition-colors mb-1.5 overflow-hidden cursor-pointer ${isExpanded ? "border-gray-300 shadow-sm" : "border-gray-100 hover:border-gray-200"}`}
                           onClick={() => handleStopCardClick(stop)}
                         >
-                          {/* Collapsed header */}
-                          <div className="flex items-center gap-2 px-3 py-2.5">
-                            <span className="text-gray-300 text-[10px] drag-handle">&#x2630;</span>
-                            <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: activeDayColor }} />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-medium text-[13px] text-gray-900 truncate">{stop.name}</span>
-                                {badge && (
-                                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${badge.bg} ${badge.text} flex-shrink-0`}>{badge.label}</span>
-                                )}
+                          {/* Collapsed header — always visible */}
+                          <div className="px-3 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-gray-300 text-[10px] drag-handle">&#x2630;</span>
+                              <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: activeDayColor }} />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-medium text-[13px] text-gray-900 truncate">{stop.name}</span>
+                                  {badge && (
+                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${badge.bg} ${badge.text} flex-shrink-0`}>{badge.label}</span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-gray-500">
+                                  {stop.start_time ? stop.start_time.slice(0, 5) : "TBD"} · {stop.duration_minutes} min
+                                </div>
                               </div>
-                              <div className="text-[10px] text-gray-500">
-                                {stop.start_time ? stop.start_time.slice(0, 5) : "TBD"} · {stop.duration_minutes} min
-                                {stop.cost_estimate != null && Number(stop.cost_estimate) > 0 && ` · $${Number(stop.cost_estimate).toFixed(0)}`}
+                              <div className="flex gap-0.5 flex-shrink-0">
+                                {members.map(m => {
+                                  const hasVoted = upVotes.some(v => v.member_id === m.id);
+                                  return <div key={m.id} className="w-[18px] h-[18px] rounded-full flex items-center justify-center text-[7px] font-semibold"
+                                    style={hasVoted ? { backgroundColor: m.avatar_color, color: "white" } : { border: "1.5px dashed #d1d1d1", color: "#999" }}>{m.avatar_initial}</div>;
+                                })}
                               </div>
+                              <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
                             </div>
-                            <div className="flex gap-0.5 flex-shrink-0">
-                              {members.map(m => {
-                                const hasVoted = upVotes.some(v => v.member_id === m.id);
-                                return <div key={m.id} className="w-[18px] h-[18px] rounded-full flex items-center justify-center text-[7px] font-semibold"
-                                  style={hasVoted ? { backgroundColor: m.avatar_color, color: "white" } : { border: "1.5px dashed #d1d1d1", color: "#999" }}>{m.avatar_initial}</div>;
-                              })}
-                            </div>
-                            <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
+                            {/* Description preview — always visible */}
+                            {stop.description && (
+                              <p className="text-[11px] text-gray-500 leading-relaxed mt-1.5 ml-7 line-clamp-2">{stop.description}</p>
+                            )}
                           </div>
 
                           {/* Expanded content */}
                           {isExpanded && (
                             <div className="px-3 pb-3 border-t border-gray-50" onClick={e => e.stopPropagation()}>
-                              {stop.description && (
+                              {/* Full description if truncated */}
+                              {stop.description && stop.description.length > 120 && (
                                 <p className="text-[12px] text-gray-600 leading-relaxed mt-2 mb-2">{stop.description}</p>
                               )}
                               {/* Details row */}
-                              <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 mb-3">
+                              <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 mb-3 mt-2">
                                 {stop.start_time && (
                                   <span className="flex items-center gap-1">
                                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10" strokeWidth="1.5"/><path strokeLinecap="round" strokeWidth="1.5" d="M12 6v6l4 2"/></svg>
@@ -697,12 +703,6 @@ Rules:
                                   <span className="flex items-center gap-1">
                                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeWidth="1.5" d="M12 1v22m5-18H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H7"/></svg>
                                     ${Number(stop.cost_estimate).toFixed(2)}
-                                  </span>
-                                )}
-                                {stop.latitude && stop.longitude && (
-                                  <span className="flex items-center gap-1">
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeWidth="1.5" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeWidth="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                                    {stop.latitude.toFixed(4)}, {stop.longitude.toFixed(4)}
                                   </span>
                                 )}
                               </div>

@@ -9,6 +9,7 @@ interface TripCard {
   trip: Trip;
   memberCount: number;
   hasSession: boolean;
+  isOrganizer: boolean;
 }
 
 export default function HomePage() {
@@ -27,6 +28,7 @@ export default function HomePage() {
   const [rejoinTrip, setRejoinTrip] = useState<Trip | null>(null);
   const [rejoinMembers, setRejoinMembers] = useState<TripMember[]>([]);
   const [rejoining, setRejoining] = useState(false);
+  const [deletingTripId, setDeletingTripId] = useState<string | null>(null);
 
   useEffect(() => {
     loadTrips();
@@ -43,6 +45,9 @@ export default function HomePage() {
       const { data: allTrips } = await supabase.from("trips").select("*").order("created_at", { ascending: false });
       if (!allTrips) { setTrips([]); setLoading(false); return; }
 
+      // Build a set of trip IDs where the user is an organizer
+      const organizerTripIds = new Set(memberships.filter(m => m.role === "organizer").map(m => m.trip_id));
+
       const cards: TripCard[] = [];
       for (const trip of allTrips) {
         const { count } = await supabase.from("trip_members").select("*", { count: "exact", head: true }).eq("trip_id", trip.id);
@@ -50,6 +55,7 @@ export default function HomePage() {
           trip: trip as Trip,
           memberCount: count || 0,
           hasSession: sessionTripIds.has(trip.id),
+          isOrganizer: organizerTripIds.has(trip.id),
         });
       }
       setTrips(cards);
@@ -85,6 +91,14 @@ export default function HomePage() {
       return;
     }
     router.push(`/trip/${member.trip_id}`);
+  }
+
+  async function handleDeleteTrip(tripId: string) {
+    if (!confirm("Delete this trip and all its data? This cannot be undone.")) return;
+    setDeletingTripId(tripId);
+    await supabase.from("trips").delete().eq("id", tripId);
+    setTrips(prev => prev.filter(c => c.trip.id !== tripId));
+    setDeletingTripId(null);
   }
 
   async function handleCreate() {
@@ -177,27 +191,38 @@ export default function HomePage() {
                 <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Your trips</h2>
                 <div className="space-y-2">
                   {trips.map(card => (
-                    <button key={card.trip.id} onClick={() => handleTripClick(card)}
-                      className="w-full bg-white rounded-xl border border-gray-100 hover:border-emerald-200 hover:shadow-sm transition-all p-4 text-left group">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
-                          style={{ backgroundColor: card.trip.cover_color || "#1D9E75" }}>
-                          {card.trip.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-sm text-gray-900 truncate group-hover:text-emerald-700 transition-colors">{card.trip.name}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">
-                            {formatDates(card.trip)} · {card.memberCount} {card.memberCount === 1 ? "traveler" : "travelers"}
+                    <div key={card.trip.id} className="relative group">
+                      <button onClick={() => handleTripClick(card)}
+                        className="w-full bg-white rounded-xl border border-gray-100 hover:border-emerald-200 hover:shadow-sm transition-all p-4 text-left">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                            style={{ backgroundColor: card.trip.cover_color || "#1D9E75" }}>
+                            {card.trip.name.charAt(0).toUpperCase()}
                           </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-gray-900 truncate group-hover:text-emerald-700 transition-colors">{card.trip.name}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {formatDates(card.trip)} · {card.memberCount} {card.memberCount === 1 ? "traveler" : "travelers"}
+                            </div>
+                          </div>
+                          {!card.hasSession && (
+                            <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium flex-shrink-0">Rejoin</span>
+                          )}
+                          <svg className="w-4 h-4 text-gray-300 group-hover:text-emerald-500 transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
                         </div>
-                        {!card.hasSession && (
-                          <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium flex-shrink-0">Rejoin</span>
-                        )}
-                        <svg className="w-4 h-4 text-gray-300 group-hover:text-emerald-500 transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                    </button>
+                      </button>
+                      {card.isOrganizer && (
+                        <button onClick={() => handleDeleteTrip(card.trip.id)} disabled={deletingTripId === card.trip.id}
+                          className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-400 hover:text-red-500 hover:border-red-200 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-50"
+                          title="Delete trip">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
               </div>
