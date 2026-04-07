@@ -29,6 +29,120 @@ export default function TripDashboard() {
   const [showAddStop, setShowAddStop] = useState(false);
   const [newStop, setNewStop] = useState({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "" });
   const [addingStop, setAddingStop] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [generatingItinerary, setGeneratingItinerary] = useState(false);
+
+  const ITINERARY_SYSTEM_PROMPT = `You are a family trip planning assistant. When the user describes a trip, generate a complete day-by-day itinerary.
+
+You MUST respond with a friendly message followed by a JSON code block containing the itinerary. The JSON must be wrapped in \`\`\`json and \`\`\` markers.
+
+The JSON format must be exactly:
+{
+  "days": [
+    {
+      "day_number": 1,
+      "title": "City or area name",
+      "stops": [
+        {
+          "name": "Place name",
+          "description": "Brief description of what to do here",
+          "latitude": 42.1234,
+          "longitude": -85.1234,
+          "start_time": "09:00",
+          "duration_minutes": 90,
+          "cost_estimate": 25.00
+        }
+      ]
+    }
+  ]
+}
+
+Rules:
+- Include 3-6 stops per day with realistic times starting around 8-9am
+- Include real coordinates (latitude/longitude) for each stop
+- Include cost estimates in USD (0 for free activities)
+- Duration in minutes
+- start_time in HH:MM 24-hour format
+- Make stops family-friendly and varied (mix of activities, food, sightseeing)
+- Include breakfast/lunch/dinner stops`;
+
+  async function handleChatSend(message?: string) {
+    const text = message || chatInput.trim();
+    if (!text || generatingItinerary) return;
+    const userMsg = { role: "user" as const, content: text };
+    const newMessages = [...chatMessages, userMsg];
+    setChatMessages(newMessages);
+    setChatInput("");
+    setGeneratingItinerary(true);
+
+    try {
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: newMessages,
+          systemPrompt: ITINERARY_SYSTEM_PROMPT,
+          max_tokens: 4096,
+        }),
+      });
+      const data = await res.json();
+      const assistantMsg = { role: "assistant" as const, content: data.content };
+      setChatMessages(prev => [...prev, assistantMsg]);
+
+      // Try to parse itinerary JSON from the response
+      const jsonMatch = data.content.match(/```json\s*([\s\S]*?)```/);
+      if (jsonMatch) {
+        const itinerary = JSON.parse(jsonMatch[1]);
+        if (itinerary.days && Array.isArray(itinerary.days)) {
+          await saveItinerary(itinerary.days);
+        }
+      }
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: "assistant", content: "Sorry, something went wrong. Please try again." }]);
+    } finally {
+      setGeneratingItinerary(false);
+    }
+  }
+
+  async function saveItinerary(itineraryDays: Array<{ day_number: number; title: string; stops: Array<{ name: string; description?: string; latitude?: number; longitude?: number; start_time?: string; duration_minutes?: number; cost_estimate?: number }> }>) {
+    const createdDays: Day[] = [];
+    for (const dayData of itineraryDays) {
+      const color = DAY_COLORS[(dayData.day_number - 1) % DAY_COLORS.length];
+      const { data: dayRow } = await supabase.from("days").insert({
+        trip_id: tripId, day_number: dayData.day_number, title: dayData.title, color,
+      }).select().single();
+      if (dayRow) createdDays.push(dayRow as Day);
+    }
+
+    const allStops: Stop[] = [];
+    for (let i = 0; i < itineraryDays.length; i++) {
+      const dayData = itineraryDays[i];
+      const savedDay = createdDays[i];
+      if (!savedDay) continue;
+      for (let j = 0; j < dayData.stops.length; j++) {
+        const stopData = dayData.stops[j];
+        const { data: stopRow } = await supabase.from("stops").insert({
+          trip_id: tripId,
+          day_id: savedDay.id,
+          name: stopData.name,
+          description: stopData.description || null,
+          latitude: stopData.latitude || null,
+          longitude: stopData.longitude || null,
+          start_time: stopData.start_time || null,
+          duration_minutes: stopData.duration_minutes || 60,
+          cost_estimate: stopData.cost_estimate ?? null,
+          sort_order: j,
+          created_by: currentMember?.id || null,
+        }).select().single();
+        if (stopRow) allStops.push(stopRow as Stop);
+      }
+    }
+
+    setDays(createdDays);
+    setStops(allStops);
+    setActiveDay(0);
+  }
 
   async function handleAddDay() {
     if (!newDayTitle.trim()) return;
@@ -189,76 +303,147 @@ export default function TripDashboard() {
             )}
 
             <div className="flex-1 overflow-y-auto px-3 py-2">
-              {currentDayStops.length === 0 && days.length > 0 && (
-                <div className="text-center py-10"><p className="text-gray-400 text-sm mb-2">No stops on this day yet</p></div>
-              )}
-              {currentDayStops.map((stop, idx) => {
-                const stopVotes = votes.filter(v => v.stop_id === stop.id);
-                const upVotes = stopVotes.filter(v => v.vote === 1);
-                return (
-                  <div key={stop.id}>
-                    {idx > 0 && stop.transit_note && (
-                      <div className="flex items-center gap-2 py-1 px-2">
-                        <div className="flex-1 h-px bg-gray-100" /><span className="text-[10px] text-gray-400">{stop.transit_note}</span><div className="flex-1 h-px bg-gray-100" />
+              {days.length === 0 ? (
+                /* AI Chat — empty trip experience */
+                <div className="flex flex-col h-full">
+                  <div className="flex-1 overflow-y-auto">
+                    {chatMessages.length === 0 && (
+                      <div className="flex flex-col items-center justify-center py-8 px-4">
+                        <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="4" width="18" height="14" rx="3" /><path d="M7 10h10m-10 4h6" />
+                          </svg>
+                        </div>
+                        <h2 className="text-[15px] font-semibold text-gray-900 mb-1">Plan your trip with Claude</h2>
+                        <p className="text-[12px] text-gray-500 text-center max-w-[300px] mb-5 leading-relaxed">
+                          Tell me about your trip — where are you going, how long, and what does your family enjoy?
+                        </p>
+                        <div className="flex flex-wrap gap-2 justify-center max-w-[380px]">
+                          {[
+                            "Plan 9 days in Italy with kids",
+                            "Weekend trip to Northern Michigan",
+                            "5-day beach vacation in Florida",
+                            "Family road trip through national parks",
+                          ].map(chip => (
+                            <button key={chip} onClick={() => handleChatSend(chip)}
+                              className="px-3 py-1.5 rounded-full text-[11px] border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors">
+                              {chip}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
-                    <div className="bg-white rounded-lg border border-gray-100 hover:border-gray-200 transition-colors mb-1.5 overflow-hidden">
-                      <div className="flex items-center gap-2 px-3 py-2.5">
-                        <span className="text-gray-300 text-[10px] drag-handle">&#x2630;</span>
-                        <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: DAY_COLORS[activeDay % DAY_COLORS.length] }} />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium text-[13px] text-gray-900 truncate">{stop.name}</div>
-                          <div className="text-[10px] text-gray-500">{stop.start_time || "TBD"} · {stop.duration_minutes} min</div>
-                        </div>
-                        <div className="flex gap-0.5 flex-shrink-0">
-                          {members.map(m => {
-                            const hasVoted = upVotes.some(v => v.member_id === m.id);
-                            return <div key={m.id} className="w-[18px] h-[18px] rounded-full flex items-center justify-center text-[7px] font-semibold"
-                              style={hasVoted ? { backgroundColor: m.avatar_color, color: "white" } : { border: "1.5px dashed #d1d1d1", color: "#999" }}>{m.avatar_initial}</div>;
-                          })}
+                    {chatMessages.map((msg, idx) => (
+                      <div key={idx} className={`mb-3 flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                        <div className={`max-w-[85%] rounded-xl px-3 py-2 text-[12px] leading-relaxed ${
+                          msg.role === "user"
+                            ? "bg-emerald-500 text-white"
+                            : "bg-gray-100 text-gray-800"
+                        }`}>
+                          {msg.role === "assistant" ? msg.content.replace(/```json[\s\S]*?```/g, "").trim() || "Itinerary generated!" : msg.content}
                         </div>
                       </div>
-                    </div>
+                    ))}
+                    {generatingItinerary && (
+                      <div className="mb-3 flex justify-start">
+                        <div className="bg-gray-100 rounded-xl px-3 py-2 text-[12px] text-gray-500 flex items-center gap-2">
+                          <div className="flex gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                            <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                            <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                          </div>
+                          Planning your itinerary...
+                        </div>
+                      </div>
+                    )}
                   </div>
-                );
-              })}
-              {days.length > 0 && !showAddStop && (
-                <button onClick={() => setShowAddStop(true)} className="w-full border border-dashed border-gray-200 rounded-lg py-2 text-center cursor-pointer hover:border-emerald-400 hover:text-emerald-600 transition-colors mt-1">
-                  <span className="text-gray-400 text-[11px] hover:text-emerald-600">+ Add stop</span>
-                </button>
-              )}
-              {showAddStop && days[activeDay] && (
-                <div className="border border-gray-200 rounded-lg p-3 mt-1 bg-gray-50/50">
-                  <div className="text-[12px] font-medium text-gray-700 mb-2">New stop for Day {days[activeDay].day_number}</div>
-                  <div className="space-y-2">
-                    <input type="text" value={newStop.name} onChange={e => setNewStop(s => ({ ...s, name: e.target.value }))} placeholder="Stop name *" autoFocus
-                      className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
-                    <input type="text" value={newStop.description} onChange={e => setNewStop(s => ({ ...s, description: e.target.value }))} placeholder="Description (optional)"
-                      className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
-                    <div className="flex gap-2">
-                      <input type="time" value={newStop.start_time} onChange={e => setNewStop(s => ({ ...s, start_time: e.target.value }))}
-                        className="flex-1 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
-                      <div className="flex items-center gap-1 flex-1">
-                        <input type="number" value={newStop.duration_minutes} onChange={e => setNewStop(s => ({ ...s, duration_minutes: parseInt(e.target.value) || 0 }))} min="0"
-                          className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
-                        <span className="text-[10px] text-gray-400 whitespace-nowrap">min</span>
-                      </div>
-                      <div className="flex items-center gap-1 flex-1">
-                        <span className="text-[10px] text-gray-400">$</span>
-                        <input type="number" value={newStop.cost_estimate} onChange={e => setNewStop(s => ({ ...s, cost_estimate: e.target.value }))} placeholder="Cost" min="0" step="0.01"
-                          className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
-                      </div>
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <button onClick={handleAddStop} disabled={addingStop || !newStop.name.trim()}
-                        className="px-4 py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                        {addingStop ? "Adding..." : "Add Stop"}
-                      </button>
-                      <button onClick={() => { setShowAddStop(false); setNewStop({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "" }); }}
-                        className="px-3 py-1.5 rounded-lg text-gray-400 text-[11px] hover:text-gray-600 transition-colors">Cancel</button>
-                    </div>
+                  <div className="flex gap-2 pt-2 border-t border-gray-100 mt-auto">
+                    <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
+                      placeholder="Describe your dream trip..."
+                      className="flex-1 text-[12px] px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
+                      onKeyDown={e => e.key === "Enter" && handleChatSend()}
+                      disabled={generatingItinerary} />
+                    <button onClick={() => handleChatSend()} disabled={generatingItinerary || !chatInput.trim()}
+                      className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                      {generatingItinerary ? "Planning..." : "Send"}
+                    </button>
                   </div>
                 </div>
+              ) : (
+                /* Normal itinerary view */
+                <>
+                  {currentDayStops.length === 0 && (
+                    <div className="text-center py-10"><p className="text-gray-400 text-sm mb-2">No stops on this day yet</p></div>
+                  )}
+                  {currentDayStops.map((stop, idx) => {
+                    const stopVotes = votes.filter(v => v.stop_id === stop.id);
+                    const upVotes = stopVotes.filter(v => v.vote === 1);
+                    return (
+                      <div key={stop.id}>
+                        {idx > 0 && stop.transit_note && (
+                          <div className="flex items-center gap-2 py-1 px-2">
+                            <div className="flex-1 h-px bg-gray-100" /><span className="text-[10px] text-gray-400">{stop.transit_note}</span><div className="flex-1 h-px bg-gray-100" />
+                          </div>
+                        )}
+                        <div className="bg-white rounded-lg border border-gray-100 hover:border-gray-200 transition-colors mb-1.5 overflow-hidden">
+                          <div className="flex items-center gap-2 px-3 py-2.5">
+                            <span className="text-gray-300 text-[10px] drag-handle">&#x2630;</span>
+                            <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: DAY_COLORS[activeDay % DAY_COLORS.length] }} />
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-[13px] text-gray-900 truncate">{stop.name}</div>
+                              <div className="text-[10px] text-gray-500">{stop.start_time || "TBD"} · {stop.duration_minutes} min</div>
+                            </div>
+                            <div className="flex gap-0.5 flex-shrink-0">
+                              {members.map(m => {
+                                const hasVoted = upVotes.some(v => v.member_id === m.id);
+                                return <div key={m.id} className="w-[18px] h-[18px] rounded-full flex items-center justify-center text-[7px] font-semibold"
+                                  style={hasVoted ? { backgroundColor: m.avatar_color, color: "white" } : { border: "1.5px dashed #d1d1d1", color: "#999" }}>{m.avatar_initial}</div>;
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!showAddStop && (
+                    <button onClick={() => setShowAddStop(true)} className="w-full border border-dashed border-gray-200 rounded-lg py-2 text-center cursor-pointer hover:border-emerald-400 hover:text-emerald-600 transition-colors mt-1">
+                      <span className="text-gray-400 text-[11px] hover:text-emerald-600">+ Add stop</span>
+                    </button>
+                  )}
+                  {showAddStop && days[activeDay] && (
+                    <div className="border border-gray-200 rounded-lg p-3 mt-1 bg-gray-50/50">
+                      <div className="text-[12px] font-medium text-gray-700 mb-2">New stop for Day {days[activeDay].day_number}</div>
+                      <div className="space-y-2">
+                        <input type="text" value={newStop.name} onChange={e => setNewStop(s => ({ ...s, name: e.target.value }))} placeholder="Stop name *" autoFocus
+                          className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
+                        <input type="text" value={newStop.description} onChange={e => setNewStop(s => ({ ...s, description: e.target.value }))} placeholder="Description (optional)"
+                          className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
+                        <div className="flex gap-2">
+                          <input type="time" value={newStop.start_time} onChange={e => setNewStop(s => ({ ...s, start_time: e.target.value }))}
+                            className="flex-1 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
+                          <div className="flex items-center gap-1 flex-1">
+                            <input type="number" value={newStop.duration_minutes} onChange={e => setNewStop(s => ({ ...s, duration_minutes: parseInt(e.target.value) || 0 }))} min="0"
+                              className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
+                            <span className="text-[10px] text-gray-400 whitespace-nowrap">min</span>
+                          </div>
+                          <div className="flex items-center gap-1 flex-1">
+                            <span className="text-[10px] text-gray-400">$</span>
+                            <input type="number" value={newStop.cost_estimate} onChange={e => setNewStop(s => ({ ...s, cost_estimate: e.target.value }))} placeholder="Cost" min="0" step="0.01"
+                              className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button onClick={handleAddStop} disabled={addingStop || !newStop.name.trim()}
+                            className="px-4 py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                            {addingStop ? "Adding..." : "Add Stop"}
+                          </button>
+                          <button onClick={() => { setShowAddStop(false); setNewStop({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "" }); }}
+                            className="px-3 py-1.5 rounded-lg text-gray-400 text-[11px] hover:text-gray-600 transition-colors">Cancel</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

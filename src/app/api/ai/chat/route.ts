@@ -6,13 +6,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ content: "The AI assistant isn't connected yet. The Anthropic API key needs to be added to the app's environment variables." }, { status: 200 });
   }
   try {
-    const { messages, systemPrompt } = await request.json();
+    const { messages, systemPrompt, max_tokens } = await request.json();
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
+        max_tokens: max_tokens || 1024,
         system: systemPrompt,
         messages: messages.map((m: any) => ({ role: m.role, content: m.content })),
       }),
