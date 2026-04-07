@@ -18,7 +18,7 @@ interface TripMapProps {
 // Auto-fit bounds based on fitMode
 function FitBounds({ stops, days, activeDay, fitMode }: { stops: Stop[]; days: Day[]; activeDay: number; fitMode: "day" | "all" }) {
   const map = useMap();
-  const allCoord = useMemo(() => stops.filter(s => s.latitude && s.longitude), [stops]);
+  const allCoord = useMemo(() => stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [stops]);
   const activeDayId = days[activeDay]?.id;
   const dayCoord = useMemo(
     () => allCoord.filter(s => s.day_id === activeDayId),
@@ -40,7 +40,7 @@ function FitBounds({ stops, days, activeDay, fitMode }: { stops: Stop[]; days: D
 }
 
 export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop, selectedStop, fitMode, onPinClick }: TripMapProps) {
-  const stopsWithCoords = useMemo(() => stops.filter(s => s.latitude && s.longitude), [stops]);
+  const stopsWithCoords = useMemo(() => stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [stops]);
   const activeDayId = days[activeDay]?.id;
 
   const dayIdxMap = useMemo(() => {

@@ -149,3 +149,8 @@ create policy "Allow all on votes" on public.votes for all using (true) with che
 create policy "Allow all on proposals" on public.proposals for all using (true) with check (true);
 create policy "Allow all on ai_conversations" on public.ai_conversations for all using (true) with check (true);
 create policy "Allow all on journal_entries" on public.journal_entries for all using (true) with check (true);
+
+-- MIGRATION: Run these ALTER TABLE statements manually in Supabase SQL Editor
+-- if the tables already exist:
+ALTER TABLE public.stops ADD COLUMN stop_type text default 'visit' CHECK (stop_type IN ('visit', 'food', 'transit', 'walk_by', 'guided_tour'));
+ALTER TABLE public.days ADD COLUMN narrative text;

@@ -111,10 +111,12 @@ The JSON format must be exactly:
     {
       "day_number": 1,
       "title": "City or area name",
+      "narrative": "2-3 sentences setting the tone for this day. Explain the day's theme, energy level, and what makes this day special. Write as if you're a knowledgeable friend briefing the family. Example: 'Your first full day in Rome — hitting the ancient highlights while the kids still have energy. We're keeping the pace relaxed with a long gelato break in the afternoon.'",
       "stops": [
         {
           "name": "Place name",
-          "description": "Brief description of what to do here",
+          "description": "An engaging description that sells WHY this stop is worth visiting for this specific family. Don't just describe what it is — explain why it matters, what makes it special, and reference the family (kids' ages, interests). Write like a knowledgeable friend's recommendation, not a guidebook. Example: 'Historic gelateria serving Rome's best gelato since 1900 — the kids will love picking flavors at the counter' or 'Less crowded ancient Roman baths with virtual reality tours perfect for kids aged 10-12.'",
+          "stop_type": "visit",
           "latitude": 42.1234,
           "longitude": -85.1234,
           "start_time": "09:00",
@@ -127,13 +129,22 @@ The JSON format must be exactly:
 }
 
 Rules:
-- Include 3-6 stops per day with realistic times starting around 8-9am
-- Include real coordinates (latitude/longitude) for each stop
+- Include 4-7 stops per day with realistic times starting around 8-9am
+- Include real coordinates (latitude/longitude) for each stop — EXCEPT transit stops
 - Include cost estimates in USD (0 for free activities)
 - Duration in minutes
 - start_time in HH:MM 24-hour format
 - Make stops family-friendly and varied (mix of activities, food, sightseeing)
-- Include breakfast/lunch/dinner stops`;
+- Include breakfast/lunch/dinner stops
+- EVERY stop MUST have a compelling description — never leave it empty
+- Descriptions must reference the family composition (mention kids, ages, interests) and explain WHY this stop is great for them specifically
+- Each day MUST have a "narrative" field: 2-3 sentences setting the tone, theme, and energy level for that day
+- stop_type must be one of: "visit", "food", "transit", "walk_by", "guided_tour"
+- Use "food" for restaurants, cafes, gelato shops, bakeries, any meal/snack stop
+- Use "transit" for travel between cities/areas (e.g. "Train to Florence", "Drive to Lucca"). Transit stops should have a descriptive name like "Train to Florence" and description with details (departure station, duration, tips). Transit stops do NOT need latitude/longitude
+- Use "walk_by" for quick photo ops or strolls past landmarks without going inside
+- Use "guided_tour" for stops with organized tours or guides
+- Use "visit" for general sightseeing, museums, attractions`;
 
   // --- Chat persistence ---
   async function saveChatMessages(messages: { role: "user" | "assistant"; content: string }[]) {
@@ -204,13 +215,14 @@ Rules:
     }
   }
 
-  async function saveItinerary(itineraryDays: Array<{ day_number: number; title: string; stops: Array<{ name: string; description?: string; latitude?: number; longitude?: number; start_time?: string; duration_minutes?: number; cost_estimate?: number }> }>) {
+  async function saveItinerary(itineraryDays: Array<{ day_number: number; title: string; narrative?: string; stops: Array<{ name: string; description?: string; stop_type?: string; latitude?: number; longitude?: number; start_time?: string; duration_minutes?: number; cost_estimate?: number }> }>) {
     const colors = generateDayColors(itineraryDays.length);
     const createdDays: Day[] = [];
     for (const dayData of itineraryDays) {
       const color = colors[(dayData.day_number - 1) % colors.length];
       const { data: dayRow } = await supabase.from("days").insert({
         trip_id: tripId, day_number: dayData.day_number, title: dayData.title, color,
+        narrative: dayData.narrative || null,
       }).select().single();
       if (dayRow) createdDays.push(dayRow as Day);
     }
@@ -222,13 +234,16 @@ Rules:
       if (!savedDay) continue;
       for (let j = 0; j < dayData.stops.length; j++) {
         const stopData = dayData.stops[j];
+        const isTransit = stopData.stop_type === "transit";
         const { data: stopRow } = await supabase.from("stops").insert({
           trip_id: tripId, day_id: savedDay.id, name: stopData.name,
           description: stopData.description || null,
-          latitude: stopData.latitude || null, longitude: stopData.longitude || null,
+          latitude: isTransit ? null : (stopData.latitude || null),
+          longitude: isTransit ? null : (stopData.longitude || null),
           start_time: stopData.start_time || null,
           duration_minutes: stopData.duration_minutes || 60,
           cost_estimate: stopData.cost_estimate ?? null,
+          stop_type: stopData.stop_type || "visit",
           sort_order: j, created_by: currentMember?.id || null,
         }).select().single();
         if (stopRow) allStops.push(stopRow as Stop);
@@ -394,7 +409,7 @@ Rules:
   const isOrganizer = currentMember.role === "organizer";
   const currentDayStops = days[activeDay] ? stops.filter(s => s.day_id === days[activeDay].id) : [];
   const onlineMembers = members.filter(m => m.is_online);
-  const stopsWithCoords = stops.filter(s => s.latitude && s.longitude);
+  const stopsWithCoords = stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit");
 
   const lightboxPhotos = lightboxStop?.photos ? (lightboxStop.photos as { url: string; attribution?: string }[]) : [];
 
@@ -585,14 +600,40 @@ Rules:
                       <button onClick={() => setItinerarySaved(false)} className="ml-auto text-emerald-400 hover:text-emerald-600 text-[14px] leading-none">&times;</button>
                     </div>
                   )}
+                  {/* Day narrative */}
+                  {days[activeDay]?.narrative && (
+                    <div className="mb-3 px-1">
+                      <p className="text-[12px] text-gray-500 italic leading-relaxed">{days[activeDay].narrative}</p>
+                    </div>
+                  )}
                   {currentDayStops.length === 0 && !itinerarySaved && (
                     <div className="text-center py-10"><p className="text-gray-400 text-sm mb-2">No stops on this day yet</p></div>
                   )}
                   {currentDayStops.map((stop, idx) => {
+                    const activeDayColor = getDayColor(activeDay);
+
+                    // Transit stops render as styled divider rows, not cards
+                    if (stop.stop_type === "transit") {
+                      const durationHrs = stop.duration_minutes >= 60
+                        ? `${(stop.duration_minutes / 60).toFixed(stop.duration_minutes % 60 === 0 ? 0 : 1)} hrs`
+                        : `${stop.duration_minutes} min`;
+                      return (
+                        <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }} className="flex items-center gap-2.5 py-2 px-2 my-1">
+                          <div className="flex-1 h-px" style={{ backgroundColor: activeDayColor, opacity: 0.25 }} />
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className="text-[13px]">{stop.name.toLowerCase().includes("train") || stop.name.toLowerCase().includes("rail") ? "\uD83D\uDE86" : stop.name.toLowerCase().includes("fly") || stop.name.toLowerCase().includes("flight") ? "\u2708\uFE0F" : stop.name.toLowerCase().includes("ferry") || stop.name.toLowerCase().includes("boat") ? "\u26F4\uFE0F" : "\uD83D\uDE97"}</span>
+                            <span className="text-[11px] font-medium text-gray-600">{stop.name}</span>
+                            <span className="text-[10px] text-gray-400">&middot; {durationHrs}</span>
+                            {stop.description && <span className="text-[10px] text-gray-400">&middot; {stop.description.length > 60 ? stop.description.slice(0, 60) + "..." : stop.description}</span>}
+                          </div>
+                          <div className="flex-1 h-px" style={{ backgroundColor: activeDayColor, opacity: 0.25 }} />
+                        </div>
+                      );
+                    }
+
                     const stopVotes = votes.filter(v => v.stop_id === stop.id);
                     const upVotes = stopVotes.filter(v => v.vote === 1);
                     const isExpanded = expandedStop === stop.id;
-                    const activeDayColor = getDayColor(activeDay);
                     const badge = getStopBadge(stop);
                     const photos = stop.photos && Array.isArray(stop.photos) ? (stop.photos as { url: string; attribution?: string }[]) : [];
                     return (

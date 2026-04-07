@@ -27,7 +27,7 @@ export type Database = {
       days: {
         Row: {
           id: string; trip_id: string; day_number: number; date: string | null;
-          title: string | null; color: string; created_at: string;
+          title: string | null; color: string; narrative: string | null; created_at: string;
         };
         Insert: Record<string, unknown>;
         Update: Record<string, unknown>;
@@ -40,7 +40,8 @@ export type Database = {
           google_place_id: string | null; photos: StopPhoto[]; start_time: string | null;
           duration_minutes: number; sort_order: number; cost_estimate: number | null;
           cost_currency: string; notes: string | null; transit_note: string | null;
-          transit_minutes: number | null; tags: string[]; version_owner: string | null;
+          transit_minutes: number | null; tags: string[]; stop_type: string;
+          version_owner: string | null;
           master_stop_id: string | null; created_by: string | null;
           created_at: string; updated_at: string;
         };
