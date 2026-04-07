@@ -32,6 +32,7 @@ export default function TripDashboard() {
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [generatingItinerary, setGeneratingItinerary] = useState(false);
+  const [itinerarySaved, setItinerarySaved] = useState(false);
 
   const ITINERARY_SYSTEM_PROMPT = `You are a family trip planning assistant. When the user describes a trip, generate a complete day-by-day itinerary.
 
@@ -83,20 +84,40 @@ Rules:
         body: JSON.stringify({
           messages: newMessages,
           systemPrompt: ITINERARY_SYSTEM_PROMPT,
-          max_tokens: 4096,
+          max_tokens: 8192,
         }),
       });
       const data = await res.json();
-      const assistantMsg = { role: "assistant" as const, content: data.content };
-      setChatMessages(prev => [...prev, assistantMsg]);
+      const fullContent: string = data.content || "";
+
+      // Extract conversational text (everything outside the JSON block)
+      const displayText = fullContent.replace(/```json[\s\S]*?```/g, "").trim();
 
       // Try to parse itinerary JSON from the response
-      const jsonMatch = data.content.match(/```json\s*([\s\S]*?)```/);
+      const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)```/);
+      let parsed = false;
       if (jsonMatch) {
-        const itinerary = JSON.parse(jsonMatch[1]);
-        if (itinerary.days && Array.isArray(itinerary.days)) {
-          await saveItinerary(itinerary.days);
+        try {
+          const itinerary = JSON.parse(jsonMatch[1]);
+          if (itinerary.days && Array.isArray(itinerary.days)) {
+            // Show the conversational text first
+            if (displayText) {
+              setChatMessages(prev => [...prev, { role: "assistant", content: displayText }]);
+            }
+            await saveItinerary(itinerary.days);
+            // Show success message after saving
+            setChatMessages(prev => [...prev, { role: "assistant", content: "Your itinerary is ready! Check out your days above." }]);
+            setItinerarySaved(true);
+            parsed = true;
+          }
+        } catch {
+          // JSON parse failed — fall through to show raw response
         }
+      }
+
+      if (!parsed) {
+        // No valid JSON found — show the full response as-is
+        setChatMessages(prev => [...prev, { role: "assistant" as const, content: fullContent }]);
       }
     } catch (err) {
       setChatMessages(prev => [...prev, { role: "assistant", content: "Sorry, something went wrong. Please try again." }]);
@@ -340,7 +361,7 @@ Rules:
                             ? "bg-emerald-500 text-white"
                             : "bg-gray-100 text-gray-800"
                         }`}>
-                          {msg.role === "assistant" ? msg.content.replace(/```json[\s\S]*?```/g, "").trim() || "Itinerary generated!" : msg.content}
+                          {msg.content}
                         </div>
                       </div>
                     ))}
@@ -372,7 +393,16 @@ Rules:
               ) : (
                 /* Normal itinerary view */
                 <>
-                  {currentDayStops.length === 0 && (
+                  {itinerarySaved && (
+                    <div className="mb-2 px-3 py-2.5 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center gap-2">
+                      <svg className="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span className="text-[12px] text-emerald-700">Your itinerary is ready! Check out your days above.</span>
+                      <button onClick={() => setItinerarySaved(false)} className="ml-auto text-emerald-400 hover:text-emerald-600 text-[14px] leading-none">&times;</button>
+                    </div>
+                  )}
+                  {currentDayStops.length === 0 && !itinerarySaved && (
                     <div className="text-center py-10"><p className="text-gray-400 text-sm mb-2">No stops on this day yet</p></div>
                   )}
                   {currentDayStops.map((stop, idx) => {
