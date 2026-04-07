@@ -18,14 +18,15 @@ export async function POST(request: NextRequest) {
       }),
     });
     if (!response.ok) {
-      console.error("Anthropic API error:", await response.text());
-      return NextResponse.json({ content: "Sorry, I had trouble processing that. Please try again." }, { status: 200 });
+      const errorBody = await response.text();
+      console.error("Anthropic API error:", response.status, response.statusText, errorBody);
+      return NextResponse.json({ content: `[API Error ${response.status} ${response.statusText}] ${errorBody}` }, { status: 200 });
     }
     const data = await response.json();
     const content = data.content?.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n") || "I didn't have a response for that.";
     return NextResponse.json({ content });
   } catch (error) {
     console.error("AI chat error:", error);
-    return NextResponse.json({ content: "Something went wrong. Please try again." }, { status: 200 });
+    return NextResponse.json({ content: `[Caught Error] ${error instanceof Error ? error.message : String(error)}` }, { status: 200 });
   }
 }
