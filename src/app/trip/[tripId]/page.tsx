@@ -23,6 +23,51 @@ export default function TripDashboard() {
   const [activeView, setActiveView] = useState<ViewId>("itinerary");
   const [activeDay, setActiveDay] = useState<number>(0);
   const [isSandbox, setIsSandbox] = useState(false);
+  const [showAddDay, setShowAddDay] = useState(false);
+  const [newDayTitle, setNewDayTitle] = useState("");
+  const [addingDay, setAddingDay] = useState(false);
+  const [showAddStop, setShowAddStop] = useState(false);
+  const [newStop, setNewStop] = useState({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "" });
+  const [addingStop, setAddingStop] = useState(false);
+
+  async function handleAddDay() {
+    if (!newDayTitle.trim()) return;
+    setAddingDay(true);
+    const nextDayNumber = days.length > 0 ? Math.max(...days.map(d => d.day_number)) + 1 : 1;
+    const color = DAY_COLORS[(nextDayNumber - 1) % DAY_COLORS.length];
+    const { data, error } = await supabase.from("days").insert({ trip_id: tripId, day_number: nextDayNumber, title: newDayTitle.trim(), color }).select().single();
+    if (data && !error) {
+      setDays(prev => [...prev, data as Day]);
+      setActiveDay(days.length);
+      setNewDayTitle("");
+      setShowAddDay(false);
+    }
+    setAddingDay(false);
+  }
+
+  async function handleAddStop() {
+    if (!newStop.name.trim() || !days[activeDay]) return;
+    setAddingStop(true);
+    const dayStops = stops.filter(s => s.day_id === days[activeDay].id);
+    const nextOrder = dayStops.length > 0 ? Math.max(...dayStops.map(s => s.sort_order)) + 1 : 0;
+    const { data, error } = await supabase.from("stops").insert({
+      trip_id: tripId,
+      day_id: days[activeDay].id,
+      name: newStop.name.trim(),
+      description: newStop.description.trim() || null,
+      start_time: newStop.start_time || null,
+      duration_minutes: newStop.duration_minutes,
+      cost_estimate: newStop.cost_estimate ? parseFloat(newStop.cost_estimate) : null,
+      sort_order: nextOrder,
+      created_by: currentMember?.id || null,
+    }).select().single();
+    if (data && !error) {
+      setStops(prev => [...prev, data as Stop]);
+      setNewStop({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "" });
+      setShowAddStop(false);
+    }
+    setAddingStop(false);
+  }
 
   useEffect(() => {
     async function load() {
@@ -117,7 +162,7 @@ export default function TripDashboard() {
         <div className="flex flex-1 min-h-0">
           {/* Left panel */}
           <div className="w-full md:w-[55%] md:border-r border-gray-100 flex flex-col overflow-hidden">
-            <div className="flex gap-1 px-3 py-2 overflow-x-auto border-b border-gray-100 flex-shrink-0">
+            <div className="flex gap-1 px-3 py-2 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-center">
               {days.map((day, idx) => (
                 <button key={day.id} onClick={() => setActiveDay(idx)} className="px-3 py-1 rounded-full text-[11px] whitespace-nowrap transition-colors flex-shrink-0"
                   style={idx === activeDay ? { backgroundColor: DAY_COLORS[idx % DAY_COLORS.length], color: "white", fontWeight: 600 } : { backgroundColor: "#f5f5f3", color: "#888" }}>
@@ -125,7 +170,23 @@ export default function TripDashboard() {
                 </button>
               ))}
               {days.length === 0 && <span className="text-[11px] text-gray-400 py-1">No days yet — create your itinerary to get started</span>}
+              <button onClick={() => setShowAddDay(true)} className="px-2.5 py-1 rounded-full text-[11px] whitespace-nowrap transition-colors flex-shrink-0 border border-dashed border-gray-300 text-gray-500 hover:border-emerald-400 hover:text-emerald-600">+ Add Day</button>
             </div>
+
+            {showAddDay && (
+              <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
+                <div className="flex gap-2 items-center">
+                  <input type="text" value={newDayTitle} onChange={e => setNewDayTitle(e.target.value)} placeholder="Day title (e.g. Traverse City)" autoFocus
+                    className="flex-1 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
+                    onKeyDown={e => e.key === "Enter" && handleAddDay()} />
+                  <button onClick={handleAddDay} disabled={addingDay || !newDayTitle.trim()}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                    {addingDay ? "Adding..." : "Add"}
+                  </button>
+                  <button onClick={() => { setShowAddDay(false); setNewDayTitle(""); }} className="px-2 py-1.5 rounded-lg text-gray-400 text-[11px] hover:text-gray-600 transition-colors">Cancel</button>
+                </div>
+              </div>
+            )}
 
             <div className="flex-1 overflow-y-auto px-3 py-2">
               {currentDayStops.length === 0 && days.length > 0 && (
@@ -161,7 +222,44 @@ export default function TripDashboard() {
                   </div>
                 );
               })}
-              {days.length > 0 && <div className="border border-dashed border-gray-200 rounded-lg py-2 text-center cursor-pointer hover:border-gray-300 transition-colors mt-1"><span className="text-gray-400 text-[11px]">+ Add stop or drag to reorder</span></div>}
+              {days.length > 0 && !showAddStop && (
+                <button onClick={() => setShowAddStop(true)} className="w-full border border-dashed border-gray-200 rounded-lg py-2 text-center cursor-pointer hover:border-emerald-400 hover:text-emerald-600 transition-colors mt-1">
+                  <span className="text-gray-400 text-[11px] hover:text-emerald-600">+ Add stop</span>
+                </button>
+              )}
+              {showAddStop && days[activeDay] && (
+                <div className="border border-gray-200 rounded-lg p-3 mt-1 bg-gray-50/50">
+                  <div className="text-[12px] font-medium text-gray-700 mb-2">New stop for Day {days[activeDay].day_number}</div>
+                  <div className="space-y-2">
+                    <input type="text" value={newStop.name} onChange={e => setNewStop(s => ({ ...s, name: e.target.value }))} placeholder="Stop name *" autoFocus
+                      className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
+                    <input type="text" value={newStop.description} onChange={e => setNewStop(s => ({ ...s, description: e.target.value }))} placeholder="Description (optional)"
+                      className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
+                    <div className="flex gap-2">
+                      <input type="time" value={newStop.start_time} onChange={e => setNewStop(s => ({ ...s, start_time: e.target.value }))}
+                        className="flex-1 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
+                      <div className="flex items-center gap-1 flex-1">
+                        <input type="number" value={newStop.duration_minutes} onChange={e => setNewStop(s => ({ ...s, duration_minutes: parseInt(e.target.value) || 0 }))} min="0"
+                          className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
+                        <span className="text-[10px] text-gray-400 whitespace-nowrap">min</span>
+                      </div>
+                      <div className="flex items-center gap-1 flex-1">
+                        <span className="text-[10px] text-gray-400">$</span>
+                        <input type="number" value={newStop.cost_estimate} onChange={e => setNewStop(s => ({ ...s, cost_estimate: e.target.value }))} placeholder="Cost" min="0" step="0.01"
+                          className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={handleAddStop} disabled={addingStop || !newStop.name.trim()}
+                        className="px-4 py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                        {addingStop ? "Adding..." : "Add Stop"}
+                      </button>
+                      <button onClick={() => { setShowAddStop(false); setNewStop({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "" }); }}
+                        className="px-3 py-1.5 rounded-lg text-gray-400 text-[11px] hover:text-gray-600 transition-colors">Cancel</button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-1 px-3 py-2 border-t border-gray-100 flex-shrink-0">
