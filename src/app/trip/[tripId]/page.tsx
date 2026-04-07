@@ -48,6 +48,18 @@ function getStopBadge(stop: Stop): { label: string; bg: string; text: string } |
   return null;
 }
 
+// --- 12-hour time formatter ---
+function formatTime12(time: string | null): string {
+  if (!time) return "TBD";
+  const parts = time.slice(0, 5).split(":");
+  let h = parseInt(parts[0], 10);
+  const m = parts[1] || "00";
+  const ampm = h >= 12 ? "PM" : "AM";
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${m} ${ampm}`;
+}
+
 // --- Leaflet Map (dynamic, SSR-safe) ---
 const TripMap = dynamic(() => import("./TripMap"), { ssr: false, loading: () => (
   <div className="flex-1 bg-gray-100 flex items-center justify-center">
@@ -119,7 +131,7 @@ The JSON format must be exactly:
           "stop_type": "visit",
           "latitude": 42.1234,
           "longitude": -85.1234,
-          "start_time": "09:00",
+          "start_time": "9:00 AM",
           "duration_minutes": 90,
           "cost_estimate": 25.00
         }
@@ -133,7 +145,7 @@ Rules:
 - Include real coordinates (latitude/longitude) for each stop — EXCEPT transit stops
 - Include cost estimates in USD (0 for free activities)
 - Duration in minutes
-- start_time in HH:MM 24-hour format
+- start_time in 12-hour format with AM/PM (e.g. "9:00 AM", "2:30 PM", "12:00 PM")
 - Make stops family-friendly and varied (mix of activities, food, sightseeing)
 - Include breakfast/lunch/dinner stops
 - EVERY stop MUST have a compelling description — never leave it empty
@@ -608,129 +620,147 @@ Rules:
                   {currentDayStops.length === 0 && (
                     <div className="text-center py-10"><p className="text-gray-400 text-sm mb-2">No stops on this day yet</p></div>
                   )}
-                  {currentDayStops.map((stop, idx) => {
+                  {/* Tile grid with transit rows breaking the grid */}
+                  {(() => {
                     const activeDayColor = getDayColor(activeDay);
-
-                    // Transit stops render as styled divider rows, not cards
-                    if (stop.stop_type === "transit") {
-                      const durationHrs = stop.duration_minutes >= 60
-                        ? `${(stop.duration_minutes / 60).toFixed(stop.duration_minutes % 60 === 0 ? 0 : 1)} hrs`
-                        : `${stop.duration_minutes} min`;
-                      return (
-                        <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }} className="flex items-center gap-2.5 py-2 px-2 my-1">
-                          <div className="flex-1 h-px" style={{ backgroundColor: activeDayColor, opacity: 0.25 }} />
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <span className="text-[13px]">{stop.name.toLowerCase().includes("train") || stop.name.toLowerCase().includes("rail") ? "\uD83D\uDE86" : stop.name.toLowerCase().includes("fly") || stop.name.toLowerCase().includes("flight") ? "\u2708\uFE0F" : stop.name.toLowerCase().includes("ferry") || stop.name.toLowerCase().includes("boat") ? "\u26F4\uFE0F" : "\uD83D\uDE97"}</span>
-                            <span className="text-[11px] font-medium text-gray-600">{stop.name}</span>
-                            <span className="text-[10px] text-gray-400">&middot; {durationHrs}</span>
-                            {stop.description && <span className="text-[10px] text-gray-400">&middot; {stop.description.length > 60 ? stop.description.slice(0, 60) + "..." : stop.description}</span>}
-                          </div>
-                          <div className="flex-1 h-px" style={{ backgroundColor: activeDayColor, opacity: 0.25 }} />
-                        </div>
-                      );
+                    // Split stops into segments: groups of non-transit stops separated by transit stops
+                    const segments: { type: "tiles"; stops: Stop[] }[] | { type: "transit"; stop: Stop }[] = [];
+                    let currentTiles: Stop[] = [];
+                    const result: ({ type: "tiles"; stops: Stop[] } | { type: "transit"; stop: Stop })[] = [];
+                    for (const stop of currentDayStops) {
+                      if (stop.stop_type === "transit") {
+                        if (currentTiles.length > 0) { result.push({ type: "tiles", stops: [...currentTiles] }); currentTiles = []; }
+                        result.push({ type: "transit", stop });
+                      } else {
+                        currentTiles.push(stop);
+                      }
                     }
+                    if (currentTiles.length > 0) result.push({ type: "tiles", stops: currentTiles });
 
-                    const stopVotes = votes.filter(v => v.stop_id === stop.id);
-                    const upVotes = stopVotes.filter(v => v.vote === 1);
-                    const isExpanded = expandedStop === stop.id;
-                    const badge = getStopBadge(stop);
-                    const photos = stop.photos && Array.isArray(stop.photos) ? (stop.photos as { url: string; attribution?: string }[]) : [];
-                    return (
-                      <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }}>
-                        {idx > 0 && stop.transit_note && (
-                          <div className="flex items-center gap-2 py-1 px-2">
-                            <div className="flex-1 h-px bg-gray-100" /><span className="text-[10px] text-gray-400">{stop.transit_note}</span><div className="flex-1 h-px bg-gray-100" />
-                          </div>
-                        )}
-                        <div
-                          className={`bg-white rounded-lg border transition-colors mb-1.5 overflow-hidden cursor-pointer ${isExpanded ? "border-gray-300 shadow-sm" : "border-gray-100 hover:border-gray-200"}`}
-                          onClick={() => handleStopCardClick(stop)}
-                        >
-                          {/* Collapsed header — always visible */}
-                          <div className="px-3 py-2.5">
-                            <div className="flex items-center gap-2">
-                              <span className="text-gray-300 text-[10px] drag-handle">&#x2630;</span>
-                              <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: activeDayColor }} />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="font-medium text-[13px] text-gray-900 truncate">{stop.name}</span>
-                                  {badge && (
-                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${badge.bg} ${badge.text} flex-shrink-0`}>{badge.label}</span>
-                                  )}
-                                </div>
-                                <div className="text-[10px] text-gray-500">
-                                  {stop.start_time ? stop.start_time.slice(0, 5) : "TBD"} · {stop.duration_minutes} min
-                                </div>
-                              </div>
-                              <div className="flex gap-0.5 flex-shrink-0">
-                                {members.map(m => {
-                                  const hasVoted = upVotes.some(v => v.member_id === m.id);
-                                  return <div key={m.id} className="w-[18px] h-[18px] rounded-full flex items-center justify-center text-[7px] font-semibold"
-                                    style={hasVoted ? { backgroundColor: m.avatar_color, color: "white" } : { border: "1.5px dashed #d1d1d1", color: "#999" }}>{m.avatar_initial}</div>;
-                                })}
-                              </div>
-                              <svg className={`w-3.5 h-3.5 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              </svg>
+                    return result.map((segment, segIdx) => {
+                      if (segment.type === "transit") {
+                        const stop = segment.stop;
+                        const durationHrs = stop.duration_minutes >= 60
+                          ? `${(stop.duration_minutes / 60).toFixed(stop.duration_minutes % 60 === 0 ? 0 : 1)} hrs`
+                          : `${stop.duration_minutes} min`;
+                        return (
+                          <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }} className="flex items-center gap-2.5 py-2.5 px-2 my-1">
+                            <div className="flex-1 h-px" style={{ backgroundColor: activeDayColor, opacity: 0.25 }} />
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <span className="text-[13px]">{stop.name.toLowerCase().includes("train") || stop.name.toLowerCase().includes("rail") ? "\uD83D\uDE86" : stop.name.toLowerCase().includes("fly") || stop.name.toLowerCase().includes("flight") ? "\u2708\uFE0F" : stop.name.toLowerCase().includes("ferry") || stop.name.toLowerCase().includes("boat") ? "\u26F4\uFE0F" : "\uD83D\uDE97"}</span>
+                              <span className="text-[11px] font-medium text-gray-600">{stop.name}</span>
+                              <span className="text-[10px] text-gray-400">&middot; {durationHrs}</span>
+                              {stop.start_time && <span className="text-[10px] text-gray-400">&middot; {formatTime12(stop.start_time)}</span>}
+                              {stop.description && <span className="text-[10px] text-gray-400 hidden sm:inline">&middot; {stop.description.length > 50 ? stop.description.slice(0, 50) + "..." : stop.description}</span>}
                             </div>
-                            {/* Description preview — always visible */}
-                            {stop.description && (
-                              <p className="text-[11px] text-gray-500 leading-relaxed mt-1.5 ml-7 line-clamp-2">{stop.description}</p>
-                            )}
+                            <div className="flex-1 h-px" style={{ backgroundColor: activeDayColor, opacity: 0.25 }} />
                           </div>
+                        );
+                      }
 
-                          {/* Expanded content */}
-                          {isExpanded && (
-                            <div className="px-3 pb-3 border-t border-gray-50" onClick={e => e.stopPropagation()}>
-                              {/* Full description if truncated */}
-                              {stop.description && stop.description.length > 120 && (
-                                <p className="text-[12px] text-gray-600 leading-relaxed mt-2 mb-2">{stop.description}</p>
-                              )}
-                              {/* Details row */}
-                              <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 mb-3 mt-2">
-                                {stop.start_time && (
-                                  <span className="flex items-center gap-1">
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="12" cy="12" r="10" strokeWidth="1.5"/><path strokeLinecap="round" strokeWidth="1.5" d="M12 6v6l4 2"/></svg>
-                                    {stop.start_time.slice(0, 5)}
-                                  </span>
-                                )}
-                                <span className="flex items-center gap-1">
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeWidth="1.5" d="M12 8v4m0 0v4m0-4h4m-4 0H8"/></svg>
-                                  {stop.duration_minutes} min
-                                </span>
-                                {stop.cost_estimate != null && (
-                                  <span className="flex items-center gap-1">
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeWidth="1.5" d="M12 1v22m5-18H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H7"/></svg>
-                                    ${Number(stop.cost_estimate).toFixed(2)}
-                                  </span>
-                                )}
-                              </div>
-                              {/* Photo gallery — horizontal scroll */}
-                              {photos.length > 0 ? (
-                                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-                                  {photos.map((photo, pIdx) => (
-                                    <div key={pIdx} className="flex-shrink-0 w-36 h-24 rounded-lg overflow-hidden cursor-pointer border border-gray-200 hover:border-gray-400 transition-colors"
-                                      onClick={() => openLightbox(stop, pIdx)}>
-                                      <img src={photo.url} alt={`${stop.name} ${pIdx + 1}`} className="w-full h-full object-cover" />
+                      // Tile grid segment
+                      return (
+                        <div key={`seg-${segIdx}`} className="flex flex-wrap gap-2.5 mb-1">
+                          {segment.stops.map(stop => {
+                            const stopVotes = votes.filter(v => v.stop_id === stop.id);
+                            const upVotes = stopVotes.filter(v => v.vote === 1);
+                            const isExpanded = expandedStop === stop.id;
+                            const badge = getStopBadge(stop);
+                            const photos = stop.photos && Array.isArray(stop.photos) ? (stop.photos as { url: string; attribution?: string }[]) : [];
+
+                            // Expanded tile renders full-width
+                            if (isExpanded) {
+                              return (
+                                <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }}
+                                  className="w-full bg-white rounded-xl border border-gray-300 shadow-sm overflow-hidden cursor-pointer mb-1"
+                                  onClick={() => handleStopCardClick(stop)}>
+                                  {/* Color bar top */}
+                                  <div className="h-1.5 w-full" style={{ backgroundColor: activeDayColor }} />
+                                  <div className="px-4 py-3">
+                                    <div className="flex items-start justify-between gap-2 mb-2">
+                                      <div>
+                                        <div className="flex items-center gap-1.5 mb-0.5">
+                                          <span className="font-semibold text-[14px] text-gray-900">{stop.name}</span>
+                                          {badge && <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${badge.bg} ${badge.text}`}>{badge.label}</span>}
+                                        </div>
+                                        <div className="text-[11px] text-gray-500">{formatTime12(stop.start_time)} · {stop.duration_minutes} min</div>
+                                      </div>
+                                      <div className="flex gap-0.5 flex-shrink-0 mt-0.5">
+                                        {members.map(m => {
+                                          const hasVoted = upVotes.some(v => v.member_id === m.id);
+                                          return <div key={m.id} className="w-[18px] h-[18px] rounded-full flex items-center justify-center text-[7px] font-semibold"
+                                            style={hasVoted ? { backgroundColor: m.avatar_color, color: "white" } : { border: "1.5px dashed #d1d1d1", color: "#999" }}>{m.avatar_initial}</div>;
+                                        })}
+                                      </div>
                                     </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="w-full h-20 rounded-lg bg-gray-100 flex items-center justify-center">
-                                  <div className="text-center">
-                                    <svg className="w-5 h-5 text-gray-300 mx-auto mb-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                    </svg>
-                                    <p className="text-[9px] text-gray-400">No photos yet</p>
+                                    {/* Full description */}
+                                    {stop.description && <p className="text-[12px] text-gray-600 leading-relaxed mb-3">{stop.description}</p>}
+                                    {/* Details */}
+                                    <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 mb-3" onClick={e => e.stopPropagation()}>
+                                      {stop.cost_estimate != null && (
+                                        <span className="flex items-center gap-1">
+                                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeWidth="1.5" d="M12 1v22m5-18H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H7"/></svg>
+                                          ${Number(stop.cost_estimate).toFixed(2)}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {/* Photos */}
+                                    <div onClick={e => e.stopPropagation()}>
+                                      {photos.length > 0 ? (
+                                        <div className="flex gap-2 overflow-x-auto pb-1">
+                                          {photos.map((photo, pIdx) => (
+                                            <div key={pIdx} className="flex-shrink-0 w-36 h-24 rounded-lg overflow-hidden cursor-pointer border border-gray-200 hover:border-gray-400 transition-colors"
+                                              onClick={() => openLightbox(stop, pIdx)}>
+                                              <img src={photo.url} alt={`${stop.name} ${pIdx + 1}`} className="w-full h-full object-cover" />
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <div className="w-full h-16 rounded-lg bg-gray-50 flex items-center justify-center">
+                                          <p className="text-[9px] text-gray-400">No photos yet</p>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
-                              )}
-                            </div>
-                          )}
+                              );
+                            }
+
+                            // Collapsed tile
+                            return (
+                              <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }}
+                                className="bg-white rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all overflow-hidden cursor-pointer flex flex-col"
+                                style={{ width: "calc(50% - 5px)", minWidth: 170, maxWidth: 220, height: 260 }}
+                                onClick={() => handleStopCardClick(stop)}>
+                                {/* Color bar top */}
+                                <div className="h-1.5 w-full flex-shrink-0" style={{ backgroundColor: activeDayColor }} />
+                                <div className="px-3 py-2.5 flex flex-col flex-1 min-h-0">
+                                  <div className="flex items-start justify-between gap-1 mb-1">
+                                    <span className="font-semibold text-[13px] text-gray-900 leading-tight line-clamp-2">{stop.name}</span>
+                                    {badge && <span className={`px-1 py-0.5 rounded text-[8px] font-medium ${badge.bg} ${badge.text} flex-shrink-0 mt-0.5`}>{badge.label}</span>}
+                                  </div>
+                                  <div className="text-[10px] text-gray-500 mb-1.5 flex-shrink-0">
+                                    {formatTime12(stop.start_time)} · {stop.duration_minutes} min
+                                  </div>
+                                  {stop.description && (
+                                    <p className="text-[10px] text-gray-500 leading-relaxed line-clamp-5 flex-1 min-h-0">{stop.description}</p>
+                                  )}
+                                  {/* Vote avatars at bottom */}
+                                  <div className="flex gap-0.5 mt-auto pt-1.5 flex-shrink-0">
+                                    {members.map(m => {
+                                      const hasVoted = upVotes.some(v => v.member_id === m.id);
+                                      return <div key={m.id} className="w-[16px] h-[16px] rounded-full flex items-center justify-center text-[6px] font-semibold"
+                                        style={hasVoted ? { backgroundColor: m.avatar_color, color: "white" } : { border: "1px dashed #d1d1d1", color: "#999" }}>{m.avatar_initial}</div>;
+                                    })}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    });
+                  })()}
                   {!showAddStop && (
                     <button onClick={() => setShowAddStop(true)} className="w-full border border-dashed border-gray-200 rounded-lg py-2 text-center cursor-pointer hover:border-emerald-400 hover:text-emerald-600 transition-colors mt-1">
                       <span className="text-gray-400 text-[11px] hover:text-emerald-600">+ Add stop</span>
