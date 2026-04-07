@@ -541,7 +541,7 @@ Rules:
         <div className="flex flex-1 min-h-0">
           {/* Left panel */}
           <div className="w-full md:w-[55%] md:border-r border-gray-100 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto px-3 py-2">
+            <div className="flex-1 overflow-y-auto px-3 py-2" onClick={() => setExpandedStop(null)}>
               {days.length === 0 ? (
                 /* AI Chat — empty trip experience */
                 <div className="flex flex-col h-full">
@@ -671,7 +671,7 @@ Rules:
                               <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }}
                                 className={`bg-white rounded-xl border-2 transition-all overflow-hidden flex flex-col ${isSelected ? "shadow-md" : "hover:shadow-sm"}`}
                                 style={{ width: "calc(50% - 5px)", minWidth: 220, maxWidth: 286, height: 338, borderColor: isSelected ? activeDayColor : "#f3f4f6" }}
-                                onClick={() => { setExpandedStop(stop.id); triggerPulse(stop.id); }}>
+                                onClick={(e) => { e.stopPropagation(); setExpandedStop(stop.id); triggerPulse(stop.id); }}>
                                 {/* Color bar top */}
                                 <div className="h-2 w-full flex-shrink-0" style={{ backgroundColor: activeDayColor }} />
                                 <div className="px-3.5 py-3 flex flex-col flex-1 min-h-0">
