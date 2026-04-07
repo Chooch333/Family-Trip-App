@@ -1,13 +1,14 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getAllMemberships, createTrip, joinTrip } from "@/lib/session";
+import { getAllMemberships, createTrip, joinTrip, rejoinAsMember } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
 import type { Trip, TripMember } from "@/lib/database.types";
 
 interface TripCard {
   trip: Trip;
   memberCount: number;
+  hasSession: boolean;
 }
 
 export default function HomePage() {
@@ -22,6 +23,10 @@ export default function HomePage() {
   const [creating, setCreating] = useState(false);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
+  // Rejoin state
+  const [rejoinTrip, setRejoinTrip] = useState<Trip | null>(null);
+  const [rejoinMembers, setRejoinMembers] = useState<TripMember[]>([]);
+  const [rejoining, setRejoining] = useState(false);
 
   useEffect(() => {
     loadTrips();
@@ -30,22 +35,56 @@ export default function HomePage() {
   async function loadTrips() {
     setLoading(true);
     try {
+      // Get trips the user has sessions for
       const memberships = await getAllMemberships();
-      if (memberships.length === 0) { setTrips([]); setLoading(false); return; }
+      const sessionTripIds = new Set(memberships.map(m => m.trip_id));
 
-      const tripIds = Array.from(new Set(memberships.map(m => m.trip_id)));
+      // Fetch ALL trips
+      const { data: allTrips } = await supabase.from("trips").select("*").order("created_at", { ascending: false });
+      if (!allTrips) { setTrips([]); setLoading(false); return; }
+
       const cards: TripCard[] = [];
-      for (const tripId of tripIds) {
-        const { data: trip } = await supabase.from("trips").select("*").eq("id", tripId).single();
-        if (!trip) continue;
-        const { count } = await supabase.from("trip_members").select("*", { count: "exact", head: true }).eq("trip_id", tripId);
-        cards.push({ trip: trip as Trip, memberCount: count || 0 });
+      for (const trip of allTrips) {
+        const { count } = await supabase.from("trip_members").select("*", { count: "exact", head: true }).eq("trip_id", trip.id);
+        cards.push({
+          trip: trip as Trip,
+          memberCount: count || 0,
+          hasSession: sessionTripIds.has(trip.id),
+        });
       }
       setTrips(cards);
     } catch {
       setTrips([]);
     }
     setLoading(false);
+  }
+
+  async function handleTripClick(card: TripCard) {
+    if (card.hasSession) {
+      router.push(`/trip/${card.trip.id}`);
+      return;
+    }
+    // No session — show rejoin picker
+    const { data: members } = await supabase.from("trip_members").select("*").eq("trip_id", card.trip.id).order("joined_at");
+    if (members && members.length > 0) {
+      setRejoinTrip(card.trip);
+      setRejoinMembers(members as TripMember[]);
+    } else {
+      // No members — just navigate (will redirect to invite)
+      router.push(`/trip/${card.trip.id}`);
+    }
+  }
+
+  async function handleRejoin(member: TripMember) {
+    setRejoining(true);
+    setError("");
+    const result = await rejoinAsMember(member.id);
+    if ("error" in result) {
+      setError(result.error);
+      setRejoining(false);
+      return;
+    }
+    router.push(`/trip/${member.trip_id}`);
   }
 
   async function handleCreate() {
@@ -74,6 +113,37 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Rejoin modal */}
+      {rejoinTrip && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => { setRejoinTrip(null); setRejoinMembers([]); setError(""); }}>
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+            <h2 className="text-base font-semibold text-gray-900 mb-1">Rejoin {rejoinTrip.name}</h2>
+            <p className="text-xs text-gray-500 mb-4">Pick your name to get back into this trip.</p>
+            <div className="space-y-1.5">
+              {rejoinMembers.map(member => (
+                <button key={member.id} onClick={() => handleRejoin(member)} disabled={rejoining}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-gray-100 hover:border-emerald-200 hover:bg-emerald-50/50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
+                    style={{ backgroundColor: member.avatar_color }}>
+                    {member.avatar_initial}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 truncate">{member.display_name}</div>
+                    <div className="text-[10px] text-gray-400 capitalize">{member.role}</div>
+                  </div>
+                  <svg className="w-4 h-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+            {error && <p className="text-red-500 text-xs bg-red-50 rounded-lg px-3 py-2 mt-3">{error}</p>}
+            <button onClick={() => { setRejoinTrip(null); setRejoinMembers([]); setError(""); }}
+              className="w-full py-2 text-gray-400 text-xs hover:text-gray-600 transition-colors mt-3">Cancel</button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white border-b border-gray-100">
         <div className="max-w-lg mx-auto px-4 py-4 flex items-center gap-3">
@@ -106,20 +176,23 @@ export default function HomePage() {
               <div className="mb-6">
                 <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Your trips</h2>
                 <div className="space-y-2">
-                  {trips.map(({ trip, memberCount }) => (
-                    <button key={trip.id} onClick={() => router.push(`/trip/${trip.id}`)}
+                  {trips.map(card => (
+                    <button key={card.trip.id} onClick={() => handleTripClick(card)}
                       className="w-full bg-white rounded-xl border border-gray-100 hover:border-emerald-200 hover:shadow-sm transition-all p-4 text-left group">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
-                          style={{ backgroundColor: trip.cover_color || "#1D9E75" }}>
-                          {trip.name.charAt(0).toUpperCase()}
+                          style={{ backgroundColor: card.trip.cover_color || "#1D9E75" }}>
+                          {card.trip.name.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-semibold text-sm text-gray-900 truncate group-hover:text-emerald-700 transition-colors">{trip.name}</div>
+                          <div className="font-semibold text-sm text-gray-900 truncate group-hover:text-emerald-700 transition-colors">{card.trip.name}</div>
                           <div className="text-xs text-gray-500 mt-0.5">
-                            {formatDates(trip)} · {memberCount} {memberCount === 1 ? "traveler" : "travelers"}
+                            {formatDates(card.trip)} · {card.memberCount} {card.memberCount === 1 ? "traveler" : "travelers"}
                           </div>
                         </div>
+                        {!card.hasSession && (
+                          <span className="text-[10px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium flex-shrink-0">Rejoin</span>
+                        )}
                         <svg className="w-4 h-4 text-gray-300 group-hover:text-emerald-500 transition-colors flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>

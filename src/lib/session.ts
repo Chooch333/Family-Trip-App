@@ -81,6 +81,16 @@ export async function getAllMemberships(): Promise<TripMember[]> {
   return members;
 }
 
+export async function rejoinAsMember(memberId: string): Promise<{ member: TripMember; token: string } | { error: string }> {
+  const sessionToken = nanoid(32);
+  const { data, error } = await supabase.from("trip_members").update({
+    session_token: sessionToken, is_online: true, last_seen_at: new Date().toISOString(),
+  }).eq("id", memberId).select().single();
+  if (error || !data) return { error: "Failed to rejoin. Please try again." };
+  addSessionToken(sessionToken);
+  return { member: data as TripMember, token: sessionToken };
+}
+
 export async function joinTrip(
   inviteCode: string, displayName: string
 ): Promise<{ member: TripMember; token: string } | { error: string }> {
