@@ -79,7 +79,7 @@ export default function TripDashboard() {
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [generatingItinerary, setGeneratingItinerary] = useState(false);
-  const [itinerarySaved, setItinerarySaved] = useState(false);
+  const [itinerarySaved, setItinerarySaved] = useState(false); // kept for logic flow only
   const [expandedStop, setExpandedStop] = useState<string | null>(null);
   const [pulsingStop, setPulsingStop] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -486,20 +486,22 @@ Rules:
         </div>
 
         {/* Day tabs — full width across both panels */}
-        <div className="flex gap-1.5 px-3 py-2.5 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-center bg-white" style={{ zIndex: 5 }}>
+        <div className="flex gap-1.5 px-3 py-2.5 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-end bg-white" style={{ zIndex: 5 }}>
           {days.map((day, idx) => {
             const color = getDayColor(idx);
             const isActive = idx === activeDay;
             return (
               <button key={day.id} onClick={() => setActiveDay(idx)}
-                className="px-3 py-1.5 rounded-full text-[11px] whitespace-nowrap transition-all flex-shrink-0 font-medium"
+                className="rounded-full text-[11px] whitespace-nowrap transition-all flex-shrink-0 font-medium"
                 style={{
                   backgroundColor: color,
                   color: "white",
-                  opacity: isActive ? 1 : 0.7,
+                  opacity: isActive ? 1 : 0.5,
                   fontWeight: isActive ? 700 : 500,
-                  boxShadow: isActive ? "0 2px 8px rgba(0,0,0,0.15)" : "none",
-                  transform: isActive ? "scale(1.05)" : "scale(1)",
+                  padding: isActive ? "7px 14px" : "5px 12px",
+                  fontSize: isActive ? "12px" : "11px",
+                  boxShadow: isActive ? "0 2px 10px rgba(0,0,0,0.2)" : "none",
+                  transform: isActive ? "translateY(-2px)" : "translateY(0)",
                 }}>
                 Day {day.day_number}{day.title ? ` \u00b7 ${day.title}` : ""}
               </button>
@@ -591,22 +593,19 @@ Rules:
               ) : (
                 /* Normal itinerary view */
                 <>
-                  {itinerarySaved && (
-                    <div className="mb-2 px-3 py-2.5 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center gap-2">
-                      <svg className="w-4 h-4 text-emerald-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span className="text-[12px] text-emerald-700">Your itinerary is ready! Check out your days above.</span>
-                      <button onClick={() => setItinerarySaved(false)} className="ml-auto text-emerald-400 hover:text-emerald-600 text-[14px] leading-none">&times;</button>
-                    </div>
-                  )}
-                  {/* Day narrative */}
-                  {days[activeDay]?.narrative && (
-                    <div className="mb-3 px-1">
-                      <p className="text-[12px] text-gray-500 italic leading-relaxed">{days[activeDay].narrative}</p>
-                    </div>
-                  )}
-                  {currentDayStops.length === 0 && !itinerarySaved && (
+                  {/* Day narrative — colored container with day tint */}
+                  {days[activeDay]?.narrative && (() => {
+                    const dayColor = getDayColor(activeDay);
+                    // Convert hsl(H, S%, L%) to hsla for background tint
+                    const bgColor = dayColor.replace("hsl(", "hsla(").replace(")", ", 0.12)");
+                    const borderColor = dayColor.replace("hsl(", "hsla(").replace(")", ", 0.25)");
+                    return (
+                      <div className="mb-3 rounded-lg px-3.5 py-3 border" style={{ backgroundColor: bgColor, borderColor }}>
+                        <p className="text-[13px] italic leading-relaxed" style={{ color: dayColor, fontWeight: 500 }}>{days[activeDay].narrative}</p>
+                      </div>
+                    );
+                  })()}
+                  {currentDayStops.length === 0 && (
                     <div className="text-center py-10"><p className="text-gray-400 text-sm mb-2">No stops on this day yet</p></div>
                   )}
                   {currentDayStops.map((stop, idx) => {
