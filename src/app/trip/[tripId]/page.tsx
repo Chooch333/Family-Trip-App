@@ -693,8 +693,8 @@ Rules:
                                         })}
                                       </div>
                                     </div>
-                                    {/* Full description */}
-                                    {stop.description && <p className="text-[12px] text-gray-600 leading-relaxed mb-3">{stop.description}</p>}
+                                    {/* Full description — only if truncated in tile view */}
+                                    {stop.description && stop.description.length > 180 && <p className="text-[12px] text-gray-600 leading-relaxed mb-3">{stop.description}</p>}
                                     {/* Details */}
                                     <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 mb-3" onClick={e => e.stopPropagation()}>
                                       {stop.cost_estimate != null && (
