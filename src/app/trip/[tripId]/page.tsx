@@ -99,6 +99,9 @@ export default function TripDashboard() {
   // Lightbox state
   const [lightboxStop, setLightboxStop] = useState<Stop | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  // Share name prompt
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [nameInput, setNameInput] = useState("");
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const stopRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -494,7 +497,33 @@ Rules:
               <button onClick={() => setIsSandbox(false)} className={`px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors ${!isSandbox ? "bg-emerald-100 text-emerald-700" : "bg-white border border-gray-200 text-gray-500"}`}>Master</button>
               <button onClick={() => setIsSandbox(true)} className={`px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors ${isSandbox ? "bg-blue-100 text-blue-700" : "bg-white border border-gray-200 text-gray-500"}`}>My sandbox</button>
             </div>}
-            <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/trip/${tripId}/invite`); }} className="px-2.5 py-1 rounded-md text-[10px] border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">Share link</button>
+            {showNamePrompt ? (
+              <div className="flex items-center gap-1.5">
+                <input type="text" value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Your name" autoFocus
+                  className="text-[10px] px-2 py-1 rounded-md border border-emerald-300 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 w-28"
+                  onKeyDown={async e => {
+                    if (e.key === "Enter" && nameInput.trim() && currentMember) {
+                      await supabase.from("trip_members").update({ display_name: nameInput.trim(), avatar_initial: nameInput.trim().charAt(0).toUpperCase() }).eq("id", currentMember.id);
+                      setCurrentMember({ ...currentMember, display_name: nameInput.trim(), avatar_initial: nameInput.trim().charAt(0).toUpperCase() });
+                      setShowNamePrompt(false);
+                      navigator.clipboard.writeText(`${window.location.origin}/trip/${tripId}/invite`);
+                    }
+                  }} />
+                <button onClick={async () => {
+                  if (nameInput.trim() && currentMember) {
+                    await supabase.from("trip_members").update({ display_name: nameInput.trim(), avatar_initial: nameInput.trim().charAt(0).toUpperCase() }).eq("id", currentMember.id);
+                    setCurrentMember({ ...currentMember, display_name: nameInput.trim(), avatar_initial: nameInput.trim().charAt(0).toUpperCase() });
+                    setShowNamePrompt(false);
+                    navigator.clipboard.writeText(`${window.location.origin}/trip/${tripId}/invite`);
+                  }
+                }} className="px-2 py-1 rounded-md text-[10px] bg-emerald-500 text-white font-medium hover:bg-emerald-600">OK</button>
+              </div>
+            ) : (
+              <button onClick={() => {
+                if (currentMember && currentMember.display_name === "Organizer") { setShowNamePrompt(true); }
+                else { navigator.clipboard.writeText(`${window.location.origin}/trip/${tripId}/invite`); }
+              }} className="px-2.5 py-1 rounded-md text-[10px] border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">Share link</button>
+            )}
           </div>
         </div>
 

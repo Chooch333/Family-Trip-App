@@ -206,7 +206,7 @@ export default function HomePage() {
     const tripTitle = `${wizDest} \u2014 ${durDays}-Day ${wizGroup || "Trip"}${wizGroup === "Family" ? " Trip" : wizGroup === "Friends" ? " Getaway" : wizGroup === "Solo" ? " Adventure" : ""}`;
 
     // Create the trip record
-    const result = await createTrip(tripTitle, "__pending__");
+    const result = await createTrip(tripTitle, "Organizer");
     if ("error" in result) { setError(result.error); setWizGenerating(false); return; }
 
     // Update trip with intake metadata
@@ -276,26 +276,10 @@ Rules:
       }
     } catch { /* itinerary generation failed but trip is created */ }
 
-    // Fetch the updated trip
-    const { data: updatedTrip } = await supabase.from("trips").select("*").eq("id", result.tripId).single();
-    setWizCreatedTrip((updatedTrip || { id: result.tripId, name: tripTitle }) as Trip);
     setWizGenerating(false);
-    setWizNamePrompt(true);
-    setWizJustCreated(true);
+    router.push(`/trip/${result.tripId}`);
   }
 
-  async function handleWizardNameSubmit() {
-    if (!wizName.trim() || !wizCreatedTrip) return;
-    // Update the placeholder member name
-    const { data: members } = await supabase.from("trip_members").select("*").eq("trip_id", wizCreatedTrip.id).eq("display_name", "__pending__").limit(1);
-    if (members && members.length > 0) {
-      await supabase.from("trip_members").update({
-        display_name: wizName.trim(),
-        avatar_initial: wizName.trim().charAt(0).toUpperCase(),
-      }).eq("id", members[0].id);
-    }
-    router.push(`/trip/${wizCreatedTrip.id}`);
-  }
 
   function generateWizardColors(count: number): string[] {
     if (count <= 0) return [];
@@ -488,20 +472,8 @@ Rules:
               </div>
             )}
 
-            {/* Name prompt after generation */}
-            {wizNamePrompt && !wizGenerating && (
-              <div className="animate-fade-in py-12">
-                <p className="text-[20px] font-bold text-gray-900 mb-6">One more thing — what&apos;s your name?</p>
-                <input type="text" value={wizName} onChange={e => setWizName(e.target.value)} placeholder="Your first name" autoFocus
-                  className={inputClass} onKeyDown={e => e.key === "Enter" && handleWizardNameSubmit()} />
-                <div className="flex justify-center gap-3 mt-6">
-                  <button onClick={handleWizardNameSubmit} disabled={!wizName.trim()} className={btnPrimary}>View my trip</button>
-                </div>
-              </div>
-            )}
-
             {/* Wizard steps */}
-            {!wizGenerating && !wizNamePrompt && (
+            {!wizGenerating && (
               <>
                 {/* Completed answers breadcrumbs */}
                 {wizAnswers.length > 0 && (
@@ -625,7 +597,7 @@ Rules:
             )}
 
             {/* Cancel */}
-            {!wizGenerating && !wizNamePrompt && (
+            {!wizGenerating && (
               <button onClick={() => { setMode("home"); resetWizard(); }}
                 className="mt-4 text-gray-400 text-xs hover:text-gray-600 transition-colors">Cancel</button>
             )}
