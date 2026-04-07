@@ -664,93 +664,33 @@ Rules:
                           {segment.stops.map(stop => {
                             const stopVotes = votes.filter(v => v.stop_id === stop.id);
                             const upVotes = stopVotes.filter(v => v.vote === 1);
-                            const isExpanded = expandedStop === stop.id;
                             const badge = getStopBadge(stop);
-                            const photos = stop.photos && Array.isArray(stop.photos) ? (stop.photos as { url: string; attribution?: string }[]) : [];
 
-                            // Expanded tile renders full-width
-                            if (isExpanded) {
-                              return (
-                                <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }}
-                                  className="w-full bg-white rounded-xl border border-gray-300 shadow-sm overflow-hidden cursor-pointer mb-1"
-                                  onClick={() => handleStopCardClick(stop)}>
-                                  {/* Color bar top */}
-                                  <div className="h-1.5 w-full" style={{ backgroundColor: activeDayColor }} />
-                                  <div className="px-4 py-3">
-                                    <div className="flex items-start justify-between gap-2 mb-2">
-                                      <div>
-                                        <div className="flex items-center gap-1.5 mb-0.5">
-                                          <span className="font-semibold text-[14px] text-gray-900">{stop.name}</span>
-                                          {badge && <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${badge.bg} ${badge.text}`}>{badge.label}</span>}
-                                        </div>
-                                        <div className="text-[11px] text-gray-500">{formatTime12(stop.start_time)} · {stop.duration_minutes} min</div>
-                                      </div>
-                                      <div className="flex gap-0.5 flex-shrink-0 mt-0.5">
-                                        {members.map(m => {
-                                          const hasVoted = upVotes.some(v => v.member_id === m.id);
-                                          return <div key={m.id} className="w-[18px] h-[18px] rounded-full flex items-center justify-center text-[7px] font-semibold"
-                                            style={hasVoted ? { backgroundColor: m.avatar_color, color: "white" } : { border: "1.5px dashed #d1d1d1", color: "#999" }}>{m.avatar_initial}</div>;
-                                        })}
-                                      </div>
-                                    </div>
-                                    {/* Full description — only if truncated in tile view */}
-                                    {stop.description && stop.description.length > 180 && <p className="text-[12px] text-gray-600 leading-relaxed mb-3">{stop.description}</p>}
-                                    {/* Details */}
-                                    <div className="flex flex-wrap gap-3 text-[11px] text-gray-500 mb-3" onClick={e => e.stopPropagation()}>
-                                      {stop.cost_estimate != null && (
-                                        <span className="flex items-center gap-1">
-                                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeWidth="1.5" d="M12 1v22m5-18H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H7"/></svg>
-                                          ${Number(stop.cost_estimate).toFixed(2)}
-                                        </span>
-                                      )}
-                                    </div>
-                                    {/* Photos */}
-                                    <div onClick={e => e.stopPropagation()}>
-                                      {photos.length > 0 ? (
-                                        <div className="flex gap-2 overflow-x-auto pb-1">
-                                          {photos.map((photo, pIdx) => (
-                                            <div key={pIdx} className="flex-shrink-0 w-36 h-24 rounded-lg overflow-hidden cursor-pointer border border-gray-200 hover:border-gray-400 transition-colors"
-                                              onClick={() => openLightbox(stop, pIdx)}>
-                                              <img src={photo.url} alt={`${stop.name} ${pIdx + 1}`} className="w-full h-full object-cover" />
-                                            </div>
-                                          ))}
-                                        </div>
-                                      ) : (
-                                        <div className="w-full h-16 rounded-lg bg-gray-50 flex items-center justify-center">
-                                          <p className="text-[9px] text-gray-400">No photos yet</p>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            // Collapsed tile
                             return (
                               <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }}
-                                className="bg-white rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all overflow-hidden cursor-pointer flex flex-col"
-                                style={{ width: "calc(50% - 5px)", minWidth: 170, maxWidth: 220, height: 260 }}
-                                onClick={() => handleStopCardClick(stop)}>
+                                className="bg-white rounded-xl border border-gray-100 hover:border-gray-200 hover:shadow-sm transition-all overflow-hidden flex flex-col"
+                                style={{ width: "calc(50% - 5px)", minWidth: 220, maxWidth: 286, height: 338 }}
+                                onClick={() => triggerPulse(stop.id)}>
                                 {/* Color bar top */}
-                                <div className="h-1.5 w-full flex-shrink-0" style={{ backgroundColor: activeDayColor }} />
-                                <div className="px-3 py-2.5 flex flex-col flex-1 min-h-0">
-                                  <div className="flex items-start justify-between gap-1 mb-1">
-                                    <span className="font-semibold text-[13px] text-gray-900 leading-tight line-clamp-2">{stop.name}</span>
-                                    {badge && <span className={`px-1 py-0.5 rounded text-[8px] font-medium ${badge.bg} ${badge.text} flex-shrink-0 mt-0.5`}>{badge.label}</span>}
+                                <div className="h-2 w-full flex-shrink-0" style={{ backgroundColor: activeDayColor }} />
+                                <div className="px-3.5 py-3 flex flex-col flex-1 min-h-0">
+                                  <div className="flex items-start justify-between gap-1 mb-1.5">
+                                    <span className="font-semibold text-[14px] text-gray-900 leading-tight line-clamp-2">{stop.name}</span>
+                                    {badge && <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${badge.bg} ${badge.text} flex-shrink-0 mt-0.5`}>{badge.label}</span>}
                                   </div>
-                                  <div className="text-[10px] text-gray-500 mb-1.5 flex-shrink-0">
+                                  <div className="text-[11px] text-gray-500 mb-2 flex-shrink-0">
                                     {formatTime12(stop.start_time)} · {stop.duration_minutes} min
+                                    {stop.cost_estimate != null && Number(stop.cost_estimate) > 0 && ` · $${Number(stop.cost_estimate).toFixed(0)}`}
                                   </div>
                                   {stop.description && (
-                                    <p className="text-[10px] text-gray-500 leading-relaxed line-clamp-5 flex-1 min-h-0">{stop.description}</p>
+                                    <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-7 flex-1 min-h-0">{stop.description}</p>
                                   )}
                                   {/* Vote avatars at bottom */}
-                                  <div className="flex gap-0.5 mt-auto pt-1.5 flex-shrink-0">
+                                  <div className="flex gap-0.5 mt-auto pt-2 flex-shrink-0">
                                     {members.map(m => {
                                       const hasVoted = upVotes.some(v => v.member_id === m.id);
-                                      return <div key={m.id} className="w-[16px] h-[16px] rounded-full flex items-center justify-center text-[6px] font-semibold"
-                                        style={hasVoted ? { backgroundColor: m.avatar_color, color: "white" } : { border: "1px dashed #d1d1d1", color: "#999" }}>{m.avatar_initial}</div>;
+                                      return <div key={m.id} className="w-[18px] h-[18px] rounded-full flex items-center justify-center text-[7px] font-semibold"
+                                        style={hasVoted ? { backgroundColor: m.avatar_color, color: "white" } : { border: "1.5px dashed #d1d1d1", color: "#999" }}>{m.avatar_initial}</div>;
                                     })}
                                   </div>
                                 </div>
