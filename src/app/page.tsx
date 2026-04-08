@@ -85,6 +85,8 @@ export default function HomePage() {
   const [rejoinMembers, setRejoinMembers] = useState<TripMember[]>([]);
   const [rejoining, setRejoining] = useState(false);
   const [deletingTripId, setDeletingTripId] = useState<string | null>(null);
+  const [editingTripId, setEditingTripId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
 
   // Wizard state
   const [wizStep, setWizStep] = useState(1);
@@ -138,6 +140,14 @@ export default function HomePage() {
     const result = await rejoinAsMember(member.id);
     if ("error" in result) { setError(result.error); setRejoining(false); return; }
     router.push(`/trip/${member.trip_id}`);
+  }
+
+  async function handleSaveTripName(tripId: string) {
+    const name = editingName.trim();
+    if (!name) { setEditingTripId(null); return; }
+    await supabase.from("trips").update({ destination: name }).eq("id", tripId);
+    setTrips(prev => prev.map(c => c.trip.id === tripId ? { ...c, trip: { ...c.trip, destination: name } } : c));
+    setEditingTripId(null);
   }
 
   async function handleDeleteTrip(tripId: string) {
@@ -437,7 +447,23 @@ Rules:
                           </div>
                         </div>
                         <div className="p-3.5 text-center">
-                          <div className="font-semibold text-[15px] text-gray-900 truncate group-hover:text-emerald-700 transition-colors">{card.trip.destination || card.trip.name}</div>
+                          {editingTripId === card.trip.id ? (
+                            <input type="text" value={editingName} onChange={e => setEditingName(e.target.value)}
+                              autoFocus className="w-full text-center font-semibold text-[15px] text-gray-900 border border-emerald-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                              onKeyDown={e => { if (e.key === "Enter") handleSaveTripName(card.trip.id); if (e.key === "Escape") setEditingTripId(null); }}
+                              onBlur={() => handleSaveTripName(card.trip.id)}
+                              onClick={e => e.stopPropagation()} />
+                          ) : (
+                            <div className="flex items-center justify-center gap-1">
+                              <div className="font-semibold text-[15px] text-gray-900 truncate group-hover:text-emerald-700 transition-colors">{card.trip.destination || card.trip.name}</div>
+                              <button onClick={e => { e.stopPropagation(); setEditingTripId(card.trip.id); setEditingName(card.trip.destination || card.trip.name); }}
+                                className="shrink-0 w-5 h-5 flex items-center justify-center text-gray-300 hover:text-emerald-500 transition-colors opacity-0 group-hover:opacity-100">
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                              </button>
+                            </div>
+                          )}
                           <div className="text-xs text-gray-500 mt-0.5">{card.trip.duration} · {card.memberCount} {card.memberCount === 1 ? "traveler" : "travelers"}</div>
                         </div>
                       </button>
