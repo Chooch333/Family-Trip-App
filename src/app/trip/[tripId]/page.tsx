@@ -641,32 +641,6 @@ Rules:
           </div>
         </div>
 
-        {/* Route strip — multi-city trips only */}
-        {multiCity && routeCities.length >= 2 && (
-          <div className="px-3 py-2 border-b border-gray-100 bg-white flex-shrink-0 text-center">
-            <div className="text-[14px] font-medium text-gray-600 flex items-center justify-center gap-1 flex-wrap">
-              {routeCities.map((city, i) => {
-                // Highlight if active day's stops are near this city
-                const activeDayId = days[activeDay]?.id;
-                const activeDayStops = stops.filter(s => s.day_id === activeDayId && s.latitude && s.longitude && s.stop_type !== "transit");
-                const isActiveCity = activeDayStops.some(
-                  s => Math.abs(s.latitude! - city.lat) < 0.15 && Math.abs(s.longitude! - city.lng) < 0.15
-                );
-                const activeDayColor = dayColors[activeDay] || "#1D9E75";
-                return (
-                  <span key={`${city.name}-${i}`} className="whitespace-nowrap">
-                    {i > 0 && <span className="text-gray-300 mx-1">{"\u2192"}</span>}
-                    <span style={{
-                      fontWeight: isActiveCity ? 700 : 500,
-                      color: isActiveCity ? activeDayColor : undefined,
-                    }}>{city.name}</span>
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {/* Day tabs — full width across both panels */}
         <div className="flex gap-1.5 px-3 py-2.5 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-end bg-white" style={{ zIndex: 5 }}>
           {days.map((day, idx) => {
@@ -927,6 +901,30 @@ Rules:
 
           {/* Right panel — Map + Claude */}
           <div className="hidden md:flex md:w-[45%] flex-col overflow-hidden">
+            {/* Route strip — multi-city only, above regional map */}
+            {multiCity && routeCities.length >= 2 && stopsWithCoords.length > 0 && (
+              <div className="px-3 py-2 border-b border-gray-100 bg-white flex-shrink-0 text-center">
+                <div className="text-[14px] font-medium text-gray-600 flex items-center justify-center gap-1 flex-wrap">
+                  {routeCities.map((city, i) => {
+                    const activeDayId = days[activeDay]?.id;
+                    const activeDayStopsForStrip = stops.filter(s => s.day_id === activeDayId && s.latitude && s.longitude && s.stop_type !== "transit");
+                    const isActiveCity = activeDayStopsForStrip.some(
+                      s => Math.abs(s.latitude! - city.lat) < 0.15 && Math.abs(s.longitude! - city.lng) < 0.15
+                    );
+                    const activeDayColor = dayColors[activeDay] || "#1D9E75";
+                    return (
+                      <span key={`${city.name}-${i}`} className="whitespace-nowrap">
+                        {i > 0 && <span className="text-gray-300 mx-1">{"\u2192"}</span>}
+                        <span style={{
+                          fontWeight: isActiveCity ? 700 : 500,
+                          color: isActiveCity ? activeDayColor : undefined,
+                        }}>{city.name}</span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {/* Regional map strip — multi-city only */}
             {multiCity && routeCities.length >= 2 && stopsWithCoords.length > 0 && (
               <RegionalMap
@@ -950,12 +948,12 @@ Rules:
                     fitMode={mapFitMode}
                     onPinClick={handleMapPinClick}
                   />
-                  {/* Full map button */}
+                  {/* Full map / Day view toggle */}
                   <button
-                    onClick={() => setMapFitMode("all")}
+                    onClick={() => setMapFitMode(mapFitMode === "all" ? "day" : "all")}
                     className="absolute top-3 right-3 z-[1000] px-2.5 py-1.5 rounded-lg bg-white/90 backdrop-blur-sm border border-gray-200 text-[11px] font-medium text-gray-700 hover:bg-white hover:border-gray-300 transition-colors shadow-sm"
                   >
-                    Full map
+                    {mapFitMode === "all" ? "Day view" : "Full map"}
                   </button>
                 </>
               ) : (

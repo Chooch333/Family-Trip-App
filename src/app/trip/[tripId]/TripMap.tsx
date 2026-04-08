@@ -235,7 +235,7 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
     return m;
   }, [days]);
 
-  // Get active day's non-transit stops in order for clustering
+  // Get active day's non-transit stops in order
   const activeDayStops = useMemo(
     () => nonTransitStops
       .filter(s => s.day_id === activeDayId)
@@ -243,39 +243,13 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
     [nonTransitStops, activeDayId]
   );
 
-  // All day stops including transit (for label extraction)
-  const allActiveDayStops = useMemo(
-    () => stops.filter(s => s.day_id === activeDayId).sort((a, b) => a.sort_order - b.sort_order),
-    [stops, activeDayId]
-  );
-
-  // Detect if we need split maps (clusters >30km apart)
-  const clusters = useMemo(
-    () => fitMode === "day" ? clusterStops(allActiveDayStops, activeDayStops, 30) : [{ stops: nonTransitStops, label: "" }],
-    [allActiveDayStops, activeDayStops, nonTransitStops, fitMode]
-  );
-
-  // If labels are empty, derive from day title
-  const dayTitle = days[activeDay]?.title || "";
-  const labeledClusters = useMemo(() => {
-    if (clusters.length < 2) return clusters;
-    return clusters.map((c, i) => {
-      if (c.label) return c;
-      // Fallback: use day title for first cluster, or derive from first stop name
-      if (i === 0 && dayTitle) return { ...c, label: dayTitle.split(/[→\-–\/,]/).map(s => s.trim())[0] || dayTitle };
-      // Try second part of day title for second cluster
-      const titleParts = dayTitle.split(/[→\-–\/,]/).map(s => s.trim()).filter(Boolean);
-      if (i < titleParts.length) return { ...c, label: titleParts[i] };
-      return c;
-    });
-  }, [clusters, dayTitle]);
-
-  const isSplit = fitMode === "day" && labeledClusters.length >= 2;
+  // Always show a single map — fits all day stops (walkable or driving)
+  const fitStops = fitMode === "all" ? nonTransitStops : activeDayStops;
 
   if (nonTransitStops.length === 0) return null;
 
   return (
-    <div className={`w-full h-full relative flex flex-col ${isSplit ? "p-2 gap-0 bg-gray-50" : ""}`}>
+    <div className="w-full h-full relative flex flex-col">
       <style>{`
         @keyframes map-pin-pulse {
           0% { r: 14; opacity: 1; }
@@ -284,46 +258,20 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
         }
         .pin-pulse circle { animation: map-pin-pulse 0.8s ease-in-out; }
       `}</style>
-      {isSplit ? (
-        // Split map — two panels stacked with labels and spacing
-        labeledClusters.map((cluster, ci) => (
-          <div key={ci} className="flex-1 min-h-0 flex flex-col" style={ci > 0 ? { marginTop: 6 } : undefined}>
-            <MapPanel
-              allStops={stops}
-              clusterStops={cluster.stops}
-              days={days}
-              activeDay={activeDay}
-              dayColors={dayColors}
-              pulsingStop={pulsingStop}
-              selectedStop={selectedStop}
-              onPinClick={onPinClick}
-              dayIdxMap={dayIdxMap}
-              activeDayId={activeDayId}
-              routeColor={activeDayColor}
-              label={cluster.label}
-              fitPadding={35}
-              className="flex-1 min-h-0 rounded-lg overflow-hidden"
-              style={{ border: "1px solid #e5e7eb" }}
-            />
-          </div>
-        ))
-      ) : (
-        // Single map
-        <MapPanel
-          allStops={stops}
-          clusterStops={fitMode === "all" ? nonTransitStops : activeDayStops}
-          days={days}
-          activeDay={activeDay}
-          dayColors={dayColors}
-          pulsingStop={pulsingStop}
-          selectedStop={selectedStop}
-          onPinClick={onPinClick}
-          dayIdxMap={dayIdxMap}
-          activeDayId={activeDayId}
-          routeColor={activeDayColor}
-          className="flex-1 min-h-0"
-        />
-      )}
+      <MapPanel
+        allStops={stops}
+        clusterStops={fitStops}
+        days={days}
+        activeDay={activeDay}
+        dayColors={dayColors}
+        pulsingStop={pulsingStop}
+        selectedStop={selectedStop}
+        onPinClick={onPinClick}
+        dayIdxMap={dayIdxMap}
+        activeDayId={activeDayId}
+        routeColor={activeDayColor}
+        className="flex-1 min-h-0"
+      />
     </div>
   );
 }
