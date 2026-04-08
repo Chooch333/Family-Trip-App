@@ -402,15 +402,15 @@ Rules:
           </div>
         ) : mode === "home" ? (
           <>
-            <div className="mb-6">
-              <p className="text-sm text-gray-500 mb-3">Start planning your next adventure or join an existing trip.</p>
+            <div className="flex flex-col items-center justify-center min-h-[40vh] mb-8">
+              <h2 className="text-2xl font-bold text-gray-900 mb-6">Family Trip Planner</h2>
               <div className="flex gap-2">
                 <button onClick={() => { setMode("wizard"); resetWizard(); }}
-                  className="flex-1 py-3.5 px-4 rounded-xl bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 transition-colors shadow-sm">
+                  className="py-3.5 px-6 rounded-xl bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 transition-colors shadow-sm">
                   Create a new trip
                 </button>
                 <button onClick={() => { setMode("join"); setError(""); }}
-                  className="flex-1 py-3.5 px-4 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors">
+                  className="py-3.5 px-6 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors">
                   Join with invite code
                 </button>
               </div>
