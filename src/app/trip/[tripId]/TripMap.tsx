@@ -228,6 +228,7 @@ function MapPanel({
         )}
         {/* Pins — render inactive first, active on top */}
         {stopsWithCoords
+          .filter(stop => showAllDays || stop.day_id === activeDayId)
           .sort((a, b) => {
             const aActive = a.day_id === activeDayId ? 1 : 0;
             const bActive = b.day_id === activeDayId ? 1 : 0;
@@ -324,30 +325,13 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
         {viewMode === "day" ? "All stops" : "Day stops"}
       </button>
 
-      {showAllStops ? (
-        /* All stops mode: single map showing everything */
-        <MapPanel
-          visibleStops={stops}
-          fitStops={nonTransitStops}
-          days={days}
-          activeDay={activeDay}
-          dayColors={dayColors}
-          pulsingStop={pulsingStop}
-          selectedStop={selectedStop}
-          onPinClick={onPinClick}
-          dayIdxMap={dayIdxMap}
-          activeDayId={activeDayId}
-          routeColor={activeDayColor}
-          className="flex-1 min-h-0"
-          showAllDays={true}
-        />
-      ) : isSplit ? (
+      {isSplit ? (
         /* Split maps: one per cluster */
         <div className="flex-1 min-h-0 flex flex-col">
           {clusters.map((cluster, i) => (
             <div key={i} className="flex-1 min-h-0 relative" style={{ borderBottom: i < clusters.length - 1 ? "2px solid #e5e7eb" : undefined }}>
               <MapPanel
-                visibleStops={cluster.stops}
+                visibleStops={showAllStops ? stops : cluster.stops}
                 fitStops={cluster.stops}
                 days={days}
                 activeDay={activeDay}
@@ -361,12 +345,13 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
                 label={cluster.label || undefined}
                 className="w-full h-full"
                 style={{ position: "absolute", inset: 0 }}
+                showAllDays={showAllStops}
               />
             </div>
           ))}
         </div>
       ) : (
-        /* Single map: all day's stops, zoom to fit */
+        /* Single map: zoom fits active day's stops, toggle only changes pin visibility */
         <MapPanel
           visibleStops={stops}
           fitStops={clusters.length > 0 ? clusters[0].stops : nonTransitStops.filter(s => s.day_id === activeDayId)}
@@ -380,6 +365,7 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
           activeDayId={activeDayId}
           routeColor={activeDayColor}
           className="flex-1 min-h-0"
+          showAllDays={showAllStops}
         />
       )}
     </div>
