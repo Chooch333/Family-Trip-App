@@ -22,13 +22,18 @@ function parseDurationHint(text: string): string | null {
   return null;
 }
 
-// --- Strip duration words from destination ---
+// --- Strip non-location words from destination input ---
 function cleanDestination(text: string): string {
   return text
+    // Duration phrases before location
     .replace(/\b(long\s+)?weekend\s+(in|to|at)\s+/i, "")
     .replace(/\b(short\s+trip|few\s+days|couple\s+(of\s+)?days)\s+(in|to|at)\s+/i, "")
     .replace(/\b\d+[\s-]+\d*\s*days?\s+(in|to|at)\s+/i, "")
     .replace(/\b(week|two\s+weeks|extended\s+trip)\s+(in|to|at)\s+/i, "")
+    // Group/context phrases after location
+    .replace(/\s+(with|for)\s+(my\s+)?(kids|family|friends|wife|husband|partner|children|grandparents|parents|the\s+\w+).*$/i, "")
+    .replace(/\s+(on\s+a\s+budget|first\s+time|solo|alone).*$/i, "")
+    .replace(/\s+(we\s+.+|i\s+.+|and\s+.+)$/i, "")
     .trim();
 }
 
@@ -204,7 +209,8 @@ export default function HomePage() {
     // Build trip name from intake
     const durLabel = wizDuration || "Trip";
     const durDays = durLabel === "Weekend" ? "3" : durLabel === "Short trip" ? "5" : durLabel === "Full week" ? "7" : durLabel === "Extended" ? "10" : durLabel;
-    const tripTitle = `${wizDest} \u2014 ${durDays}-Day ${wizGroup || "Trip"}${wizGroup === "Family" ? " Trip" : wizGroup === "Friends" ? " Getaway" : wizGroup === "Solo" ? " Adventure" : ""}`;
+    const cleanDest = cleanDestination(wizDest) || wizDest;
+    const tripTitle = `${cleanDest} \u2014 ${durDays}-Day ${wizGroup || "Trip"}${wizGroup === "Family" ? " Trip" : wizGroup === "Friends" ? " Getaway" : wizGroup === "Solo" ? " Adventure" : ""}`;
 
     // Create the trip record
     const result = await createTrip(tripTitle, "Organizer");
@@ -212,7 +218,7 @@ export default function HomePage() {
 
     // Update trip with intake metadata
     await supabase.from("trips").update({
-      destination: wizDest, duration: wizDuration, group_type: wizGroup || null,
+      destination: cleanDest, duration: wizDuration, group_type: wizGroup || null,
       group_detail: wizGroupDetail || null, interests: wizInterests.join(", ") || null,
       extra_notes: wizExtraNotes.trim() || null,
     }).eq("id", result.tripId);
@@ -430,9 +436,9 @@ Rules:
                             <span className="text-white font-bold text-xl drop-shadow-lg">{card.trip.destination || card.trip.name}</span>
                           </div>
                         </div>
-                        <div className="p-3.5">
-                          <div className="font-semibold text-[15px] text-gray-900 truncate group-hover:text-emerald-700 transition-colors">{card.trip.name}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">{tripSummary(card.trip)} · {card.memberCount} {card.memberCount === 1 ? "traveler" : "travelers"}</div>
+                        <div className="p-3.5 text-center">
+                          <div className="font-semibold text-[15px] text-gray-900 truncate group-hover:text-emerald-700 transition-colors">{card.trip.destination || card.trip.name}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">{card.trip.duration} · {card.memberCount} {card.memberCount === 1 ? "traveler" : "travelers"}</div>
                         </div>
                       </button>
                       {!card.hasSession && (
