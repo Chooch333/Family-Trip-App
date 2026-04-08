@@ -80,9 +80,10 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 }
 
 // --- Extract unique route cities from stops in travel order ---
-interface RouteCity { name: string; lat: number; lng: number; dayIdx: number; }
+interface RouteCity { name: string; lat: number; lng: number; dayIndices: number[]; }
+interface RouteCityResult { cities: RouteCity[]; dayToCityIndex: Map<number, number>; }
 
-function extractRouteCities(stops: Stop[], days: Day[]): RouteCity[] {
+function extractRouteCities(stops: Stop[], days: Day[]): RouteCityResult {
   const dayIdxMap = new Map<string, number>();
   days.forEach((d, i) => dayIdxMap.set(d.id, i));
 
@@ -96,11 +97,20 @@ function extractRouteCities(stops: Stop[], days: Day[]): RouteCity[] {
       return a.sort_order - b.sort_order;
     });
 
-  if (ordered.length === 0) return [];
+  if (ordered.length === 0) return { cities: [], dayToCityIndex: new Map() };
 
-  // Cluster stops within ~15km into "cities", take centroid and derive name
-  const cities: RouteCity[] = [];
+  // Cluster stops within ~15km into "cities", track which day indices belong to each
+  interface RawCity { name: string; lat: number; lng: number; dayIndices: Set<number>; }
+  const rawCities: RawCity[] = [];
   let clusterStops = [ordered[0]];
+
+  function finalizeCluster(cluster: Stop[]) {
+    const lat = cluster.reduce((s, st) => s + st.latitude!, 0) / cluster.length;
+    const lng = cluster.reduce((s, st) => s + st.longitude!, 0) / cluster.length;
+    const name = deriveCityName(cluster, stops, days, dayIdxMap);
+    const dayIndices = new Set(cluster.map(s => dayIdxMap.get(s.day_id) ?? 0));
+    rawCities.push({ name, lat, lng, dayIndices });
+  }
 
   for (let i = 1; i < ordered.length; i++) {
     const prev = clusterStops[clusterStops.length - 1];
@@ -109,24 +119,32 @@ function extractRouteCities(stops: Stop[], days: Day[]): RouteCity[] {
     if (dist < 15) {
       clusterStops.push(curr);
     } else {
-      // Finalize cluster
-      const lat = clusterStops.reduce((s, st) => s + st.latitude!, 0) / clusterStops.length;
-      const lng = clusterStops.reduce((s, st) => s + st.longitude!, 0) / clusterStops.length;
-      const dayIdx = dayIdxMap.get(clusterStops[0].day_id) ?? 0;
-      const name = deriveCityName(clusterStops, stops, days, dayIdxMap);
-      cities.push({ name, lat, lng, dayIdx });
+      finalizeCluster(clusterStops);
       clusterStops = [curr];
     }
   }
-  // Final cluster
-  const lat = clusterStops.reduce((s, st) => s + st.latitude!, 0) / clusterStops.length;
-  const lng = clusterStops.reduce((s, st) => s + st.longitude!, 0) / clusterStops.length;
-  const dayIdx = dayIdxMap.get(clusterStops[0].day_id) ?? 0;
-  const name = deriveCityName(clusterStops, stops, days, dayIdxMap);
-  cities.push({ name, lat, lng, dayIdx });
+  finalizeCluster(clusterStops);
 
-  // Deduplicate consecutive same-name cities
-  return cities.filter((c, i) => i === 0 || c.name !== cities[i - 1].name);
+  // Merge consecutive clusters with the same name
+  const merged: RawCity[] = [];
+  for (const city of rawCities) {
+    if (merged.length > 0 && merged[merged.length - 1].name === city.name) {
+      city.dayIndices.forEach(d => merged[merged.length - 1].dayIndices.add(d));
+    } else {
+      merged.push({ ...city, dayIndices: new Set(city.dayIndices) });
+    }
+  }
+
+  // Build final cities and day-to-city-index lookup
+  const cities: RouteCity[] = [];
+  const dayToCityIndex = new Map<number, number>();
+  merged.forEach((raw, cityIdx) => {
+    const dayArr = Array.from(raw.dayIndices).sort((a, b) => a - b);
+    cities.push({ name: raw.name, lat: raw.lat, lng: raw.lng, dayIndices: dayArr });
+    dayArr.forEach(d => dayToCityIndex.set(d, cityIdx));
+  });
+
+  return { cities, dayToCityIndex };
 }
 
 function deriveCityName(clusterStops: Stop[], allStops: Stop[], days: Day[], dayIdxMap: Map<string, number>): string {
@@ -520,7 +538,10 @@ Rules:
   }, [tripId, router]);
 
   const multiCity = useMemo(() => isMultiCityTrip(stops), [stops]);
-  const routeCities = useMemo(() => multiCity ? extractRouteCities(stops, days) : [], [stops, days, multiCity]);
+  const routeData = useMemo(() => multiCity ? extractRouteCities(stops, days) : { cities: [], dayToCityIndex: new Map<number, number>() }, [stops, days, multiCity]);
+  const routeCities = routeData.cities;
+  const dayToCityIndex = routeData.dayToCityIndex;
+  const activeCityIndex = dayToCityIndex.get(activeDay) ?? -1;
 
   if (loading) return (
     <div className="h-screen flex items-center justify-center bg-white">
@@ -642,20 +663,20 @@ Rules:
         </div>
 
         {/* Day tabs — full width across both panels */}
-        <div className="flex gap-1.5 px-3 py-2.5 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-end bg-white" style={{ zIndex: 5 }}>
+        <div className="flex gap-2 px-3 py-3 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-end bg-white" style={{ zIndex: 5 }}>
           {days.map((day, idx) => {
             const color = getDayColor(idx);
             const isActive = idx === activeDay;
             return (
               <button key={day.id} onClick={() => setActiveDay(idx)}
-                className="rounded-full text-[11px] whitespace-nowrap transition-all flex-shrink-0 font-medium"
+                className="rounded-full whitespace-nowrap transition-all flex-shrink-0 font-medium"
                 style={{
                   backgroundColor: color,
                   color: "white",
                   opacity: isActive ? 1 : 0.5,
                   fontWeight: isActive ? 700 : 500,
-                  padding: isActive ? "7px 14px" : "5px 12px",
-                  fontSize: isActive ? "12px" : "11px",
+                  padding: isActive ? "8px 16px" : "6px 13px",
+                  fontSize: isActive ? "13.5px" : "12.3px",
                   boxShadow: isActive ? "0 2px 10px rgba(0,0,0,0.2)" : "none",
                   transform: isActive ? "translateY(-2px)" : "translateY(0)",
                 }}>
@@ -663,8 +684,8 @@ Rules:
               </button>
             );
           })}
-          {days.length === 0 && <span className="text-[11px] text-gray-400 py-1">No days yet — create your itinerary to get started</span>}
-          <button onClick={() => setShowAddDay(true)} className="px-2.5 py-1.5 rounded-full text-[11px] whitespace-nowrap transition-colors flex-shrink-0 border border-dashed border-gray-300 text-gray-500 hover:border-emerald-400 hover:text-emerald-600">+ Add Day</button>
+          {days.length === 0 && <span className="text-[12px] text-gray-400 py-1">No days yet — create your itinerary to get started</span>}
+          <button onClick={() => setShowAddDay(true)} className="px-3 py-2 rounded-full text-[12px] whitespace-nowrap transition-colors flex-shrink-0 border border-dashed border-gray-300 text-gray-500 hover:border-emerald-400 hover:text-emerald-600">+ Add Day</button>
         </div>
 
         {showAddDay && (
@@ -906,11 +927,7 @@ Rules:
               <div className="px-3 py-2 border-b border-gray-100 bg-white flex-shrink-0 text-center">
                 <div className="text-[14px] font-medium text-gray-600 flex items-center justify-center gap-1 flex-wrap">
                   {routeCities.map((city, i) => {
-                    const activeDayId = days[activeDay]?.id;
-                    const activeDayStopsForStrip = stops.filter(s => s.day_id === activeDayId && s.latitude && s.longitude && s.stop_type !== "transit");
-                    const isActiveCity = activeDayStopsForStrip.some(
-                      s => Math.abs(s.latitude! - city.lat) < 0.15 && Math.abs(s.longitude! - city.lng) < 0.15
-                    );
+                    const isActiveCity = i === activeCityIndex;
                     const activeDayColor = dayColors[activeDay] || "#1D9E75";
                     return (
                       <span key={`${city.name}-${i}`} className="whitespace-nowrap">
@@ -928,11 +945,9 @@ Rules:
             {/* Regional map strip — multi-city only */}
             {multiCity && routeCities.length >= 2 && stopsWithCoords.length > 0 && (
               <RegionalMap
-                stops={stops}
-                days={days}
-                activeDay={activeDay}
-                dayColors={dayColors}
                 routeCities={routeCities}
+                activeCityIndex={activeCityIndex}
+                activeDayColor={dayColors[activeDay] || "#1D9E75"}
               />
             )}
             <div className="flex-1 relative">

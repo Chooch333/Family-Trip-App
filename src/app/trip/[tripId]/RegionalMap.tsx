@@ -1,15 +1,12 @@
 "use client";
 import { useEffect, useMemo } from "react";
 import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, useMap } from "react-leaflet";
-import type { Day, Stop } from "@/lib/database.types";
 import "leaflet/dist/leaflet.css";
 
 export interface RegionalMapProps {
-  stops: Stop[];
-  days: Day[];
-  activeDay: number;
-  dayColors: string[];
-  routeCities: { name: string; lat: number; lng: number; dayIdx: number }[];
+  routeCities: { name: string; lat: number; lng: number; dayIndices: number[] }[];
+  activeCityIndex: number;
+  activeDayColor: string;
 }
 
 function FitAllBounds({ points }: { points: { lat: number; lng: number }[] }) {
@@ -26,20 +23,10 @@ function FitAllBounds({ points }: { points: { lat: number; lng: number }[] }) {
   return null;
 }
 
-export default function RegionalMap({ stops, days, activeDay, dayColors, routeCities }: RegionalMapProps) {
-  const activeDayId = days[activeDay]?.id;
-  const activeDayColor = dayColors[activeDay] || "#1D9E75";
-
-  // Build polyline from route cities in order
+export default function RegionalMap({ routeCities, activeCityIndex, activeDayColor }: RegionalMapProps) {
   const routePositions = useMemo(
     () => routeCities.map(c => [c.lat, c.lng] as [number, number]),
     [routeCities]
-  );
-
-  // Find which city the active day belongs to
-  const activeDayStops = useMemo(
-    () => stops.filter(s => s.day_id === activeDayId && s.latitude && s.longitude && s.stop_type !== "transit"),
-    [stops, activeDayId]
   );
 
   if (routeCities.length === 0) return null;
@@ -54,7 +41,6 @@ export default function RegionalMap({ stops, days, activeDay, dayColors, routeCi
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
         />
         <FitAllBounds points={routeCities} />
-        {/* Dashed route polyline */}
         {routePositions.length >= 2 && (
           <Polyline
             positions={routePositions}
@@ -66,21 +52,18 @@ export default function RegionalMap({ stops, days, activeDay, dayColors, routeCi
             }}
           />
         )}
-        {/* City dots */}
         {routeCities.map((city, i) => {
-          const isActiveCity = activeDayStops.length > 0 && activeDayStops.some(
-            s => Math.abs(s.latitude! - city.lat) < 0.15 && Math.abs(s.longitude! - city.lng) < 0.15
-          );
+          const isActive = i === activeCityIndex;
           return (
             <CircleMarker
               key={`${city.name}-${i}`}
               center={[city.lat, city.lng]}
-              radius={isActiveCity ? 7 : 4}
+              radius={isActive ? 7 : 4}
               pathOptions={{
-                fillColor: isActiveCity ? activeDayColor : "#64748b",
+                fillColor: isActive ? activeDayColor : "#64748b",
                 color: "#fff",
-                weight: isActiveCity ? 2.5 : 1.5,
-                fillOpacity: isActiveCity ? 0.9 : 0.7,
+                weight: isActive ? 2.5 : 1.5,
+                fillOpacity: isActive ? 0.9 : 0.7,
               }}
             >
               <Tooltip direction="top" offset={[0, -6]} opacity={0.9} permanent={false}>
