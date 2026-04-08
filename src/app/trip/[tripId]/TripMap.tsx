@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from "react-leaflet";
 import type { Day, Stop } from "@/lib/database.types";
 import "leaflet/dist/leaflet.css";
@@ -329,7 +329,9 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
         /* Split maps: one per cluster */
         <div className="flex-1 min-h-0 flex flex-col">
           {clusters.map((cluster, i) => (
-            <div key={i} className="flex-1 min-h-0 relative" style={{ borderBottom: i < clusters.length - 1 ? "2px solid #e5e7eb" : undefined }}>
+            <React.Fragment key={i}>
+            {i > 0 && <div className="h-3 bg-gray-100 border-y border-gray-200 shrink-0" />}
+            <div className="flex-1 min-h-0 relative">
               <MapPanel
                 visibleStops={showAllStops ? stops : cluster.stops}
                 fitStops={cluster.stops}
@@ -348,6 +350,7 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
                 showAllDays={showAllStops}
               />
             </div>
+            </React.Fragment>
           ))}
         </div>
       ) : (
