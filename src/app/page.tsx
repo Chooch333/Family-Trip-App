@@ -99,6 +99,7 @@ export default function HomePage() {
   const [wizGroupCustom, setWizGroupCustom] = useState("");
   const [wizInterests, setWizInterests] = useState<string[]>([]);
   const [wizInterestInput, setWizInterestInput] = useState("");
+  const [wizTravelDates, setWizTravelDates] = useState("");
   const [wizExtraNotes, setWizExtraNotes] = useState("");
   const [wizGenerating, setWizGenerating] = useState(false);
   const [wizNamePrompt, setWizNamePrompt] = useState(false);
@@ -230,7 +231,7 @@ export default function HomePage() {
     await supabase.from("trips").update({
       destination: cleanDest, duration: wizDuration, group_type: wizGroup || null,
       group_detail: wizGroupDetail || null, interests: wizInterests.join(", ") || null,
-      extra_notes: wizExtraNotes.trim() || null,
+      travel_dates: wizTravelDates.trim() || null, extra_notes: wizExtraNotes.trim() || null,
     }).eq("id", result.tripId);
 
     // Build AI prompt from structured answers
@@ -238,8 +239,9 @@ export default function HomePage() {
       wizGroup === "Friends" ? (wizGroupDetail || "group of friends") :
       wizGroup === "Family" ? `family with ${wizGroupDetail || "kids"}` : "travelers";
     const interestStr = wizInterests.length > 0 ? `Interests: ${wizInterests.join(", ")}.` : "";
+    const datesStr = wizTravelDates.trim() ? `Travel dates: ${wizTravelDates.trim()}.` : "";
     const notesStr = wizExtraNotes.trim() ? `Additional notes from the traveler: ${wizExtraNotes.trim()}.` : "";
-    const prompt = `Plan a ${wizDuration || durDays + " day"} trip to ${wizDest} for ${groupDesc}. ${interestStr} ${notesStr} Make it amazing.`;
+    const prompt = `Plan a ${wizDuration || durDays + " day"} trip to ${wizDest} for ${groupDesc}. ${datesStr} ${interestStr} ${notesStr} Make it amazing.`;
 
     // Send to AI endpoint
     const systemPrompt = `You are a family trip planning assistant. Generate a complete day-by-day itinerary.
@@ -254,7 +256,8 @@ Rules:
 - 12-hour AM/PM times
 - Every stop needs an engaging description for ${groupDesc}
 - Each day needs a narrative
-- Include food stops for meals`;
+- Include food stops for meals
+${wizTravelDates.trim() ? `- Travel dates: ${wizTravelDates.trim()}. Factor in weather, seasonal closures, holidays, local events, peak/off-season pricing, and seasonal activities.` : ""}`;
 
     try {
       const res = await fetch("/api/ai/chat", {
@@ -321,7 +324,7 @@ Rules:
   function resetWizard() {
     setWizStep(1); setWizDest(""); setWizDuration(""); setWizDurationInput("");
     setWizGroup(""); setWizGroupDetail(""); setWizGroupSub([]); setWizGroupCustom("");
-    setWizInterests([]); setWizInterestInput(""); setWizExtraNotes(""); setWizGenerating(false); setWizNamePrompt(false);
+    setWizInterests([]); setWizInterestInput(""); setWizTravelDates(""); setWizExtraNotes(""); setWizGenerating(false); setWizNamePrompt(false);
     setWizName(""); setWizCreatedTrip(null); setWizJustCreated(false); setError("");
   }
 
@@ -347,6 +350,7 @@ Rules:
   if (wizStep > 2 && wizDuration) wizAnswers.push({ label: "Duration", value: wizDuration });
   if (wizStep > 3 && wizGroup) wizAnswers.push({ label: "Group", value: `${wizGroup}${wizGroupDetail ? ` (${wizGroupDetail})` : ""}` });
   if (wizStep > 4 && wizInterests.length > 0) wizAnswers.push({ label: "Interests", value: wizInterests.join(", ") });
+  if (wizStep > 5 && wizTravelDates) wizAnswers.push({ label: "Dates", value: wizTravelDates });
 
   const chipClass = "px-4 py-2 rounded-full text-[13px] font-medium border transition-all cursor-pointer";
   const chipActive = "bg-emerald-500 text-white border-emerald-500";
@@ -630,15 +634,33 @@ Rules:
                   </div>
                 )}
 
-                {/* Step 5: Extra Notes */}
+                {/* Step 5: Travel Dates */}
                 {wizStep === 5 && (
+                  <div className="animate-fade-in py-8">
+                    <input type="text" value={wizTravelDates} onChange={e => setWizTravelDates(e.target.value)}
+                      placeholder="e.g. July 2026, Spring Break, Dec 15-22..."
+                      autoFocus className={inputClass} onKeyDown={e => { if (e.key === "Enter" && wizTravelDates.trim()) setWizStep(6); }} />
+                    <div className="flex flex-wrap justify-center gap-2 mt-5 max-w-sm mx-auto">
+                      {["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map(m => (
+                        <button key={m} onClick={() => { setWizTravelDates(m); setWizStep(6); }}
+                          className={`${chipClass} text-[12px] px-3 py-1.5 ${wizTravelDates === m ? chipActive : chipInactive}`}>{m}</button>
+                      ))}
+                    </div>
+                    <div className="flex justify-center mt-6">
+                      <button onClick={() => setWizStep(4)} className={btnSecondary}>Back</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 6: Extra Notes */}
+                {wizStep === 6 && (
                   <div className="animate-fade-in py-8">
                     <h2 className="text-[20px] font-bold text-gray-900 mb-6">Anything else I should know?</h2>
                     <input type="text" value={wizExtraNotes} onChange={e => setWizExtraNotes(e.target.value)}
                       placeholder="Must-see spots, dietary needs, mobility concerns, budget..."
                       autoFocus className={inputClass} onKeyDown={e => e.key === "Enter" && handleGenerate()} />
                     <div className="flex justify-center gap-3 mt-6">
-                      <button onClick={() => setWizStep(4)} className={btnSecondary}>Back</button>
+                      <button onClick={() => setWizStep(5)} className={btnSecondary}>Back</button>
                       <button onClick={handleGenerate} disabled={wizGenerating} className={btnPrimary}>Generate itinerary</button>
                     </div>
                   </div>

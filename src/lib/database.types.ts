@@ -10,7 +10,7 @@ export type Database = {
           end_date: string | null; cover_color: string; invite_code: string;
           created_by: string | null; created_at: string; updated_at: string;
           destination: string | null; duration: string | null; group_type: string | null;
-          group_detail: string | null; interests: string | null; extra_notes: string | null; cover_image_url: string | null;
+          group_detail: string | null; interests: string | null; extra_notes: string | null; travel_dates: string | null; cover_image_url: string | null;
         };
         Insert: Record<string, unknown>;
         Update: Record<string, unknown>;
