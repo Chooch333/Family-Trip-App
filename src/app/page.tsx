@@ -390,7 +390,7 @@ Rules:
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-4 py-6">
+      <div className="max-w-5xl mx-auto px-4 py-6">
         {loading ? (
           <div className="text-center py-16">
             <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3 animate-pulse">
@@ -402,20 +402,23 @@ Rules:
           </div>
         ) : mode === "home" ? (
           <>
-            <div className="flex gap-2 mb-6">
-              <button onClick={() => { setMode("wizard"); resetWizard(); }}
-                className="flex-1 py-3.5 px-4 rounded-xl bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 transition-colors shadow-sm">
-                Create a new trip
-              </button>
-              <button onClick={() => { setMode("join"); setError(""); }}
-                className="flex-1 py-3.5 px-4 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors">
-                Join with invite code
-              </button>
+            <div className="mb-6">
+              <p className="text-sm text-gray-500 mb-3">Start planning your next adventure or join an existing trip.</p>
+              <div className="flex gap-2">
+                <button onClick={() => { setMode("wizard"); resetWizard(); }}
+                  className="flex-1 py-3.5 px-4 rounded-xl bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 transition-colors shadow-sm">
+                  Create a new trip
+                </button>
+                <button onClick={() => { setMode("join"); setError(""); }}
+                  className="flex-1 py-3.5 px-4 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors">
+                  Join with invite code
+                </button>
+              </div>
             </div>
             {trips.length > 0 ? (
               <div>
                 <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Your trips</h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   {trips.map(card => (
                     <div key={card.trip.id} className="relative group">
                       <button onClick={() => handleTripClick(card)}
