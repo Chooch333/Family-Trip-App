@@ -245,7 +245,7 @@ function MapPanel({
             const isOtherDay = showAllDays && !isActiveDay;
             const radius = isOtherDay ? 8 : (isActiveDay ? 14 : 10);
             const displayRadius = isPulsing ? 22 : (isSelected ? 18 : radius);
-            const fillOpacity = isOtherDay ? 0.6 : (isActiveDay ? 0.9 : 0.6);
+            const fillOpacity = isOtherDay ? 0.7 : (isActiveDay ? 0.9 : 0.6);
             const strokeWeight = isOtherDay ? 1 : (isActiveDay ? 2.5 : 1.5);
 
             return (
