@@ -90,8 +90,9 @@ export default function HomePage() {
   const [wizGroupDetail, setWizGroupDetail] = useState("");
   const [wizGroupSub, setWizGroupSub] = useState<string[]>([]);
   const [wizGroupCustom, setWizGroupCustom] = useState("");
-  const [wizVibes, setWizVibes] = useState<string[]>([]);
-  const [wizVibeInput, setWizVibeInput] = useState("");
+  const [wizInterests, setWizInterests] = useState<string[]>([]);
+  const [wizInterestInput, setWizInterestInput] = useState("");
+  const [wizExtraNotes, setWizExtraNotes] = useState("");
   const [wizGenerating, setWizGenerating] = useState(false);
   const [wizNamePrompt, setWizNamePrompt] = useState(false);
   const [wizName, setWizName] = useState("");
@@ -189,13 +190,13 @@ export default function HomePage() {
     setWizStep(4);
   }
 
-  function toggleVibe(v: string) {
-    setWizVibes(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+  function toggleInterest(v: string) {
+    setWizInterests(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
   }
-  function addCustomVibe() {
-    if (!wizVibeInput.trim()) return;
-    if (!wizVibes.includes(wizVibeInput.trim())) setWizVibes(prev => [...prev, wizVibeInput.trim()]);
-    setWizVibeInput("");
+  function addCustomInterest() {
+    if (!wizInterestInput.trim()) return;
+    if (!wizInterests.includes(wizInterestInput.trim())) setWizInterests(prev => [...prev, wizInterestInput.trim()]);
+    setWizInterestInput("");
   }
 
   async function handleGenerate() {
@@ -212,15 +213,17 @@ export default function HomePage() {
     // Update trip with intake metadata
     await supabase.from("trips").update({
       destination: wizDest, duration: wizDuration, group_type: wizGroup || null,
-      group_detail: wizGroupDetail || null, interests: wizVibes.join(", ") || null,
+      group_detail: wizGroupDetail || null, interests: wizInterests.join(", ") || null,
+      extra_notes: wizExtraNotes.trim() || null,
     }).eq("id", result.tripId);
 
     // Build AI prompt from structured answers
     const groupDesc = wizGroup === "Solo" ? (wizGroupDetail || "solo traveler") :
       wizGroup === "Friends" ? (wizGroupDetail || "group of friends") :
       wizGroup === "Family" ? `family with ${wizGroupDetail || "kids"}` : "travelers";
-    const vibeStr = wizVibes.length > 0 ? `Interests and vibes: ${wizVibes.join(", ")}.` : "";
-    const prompt = `Plan a ${wizDuration || durDays + " day"} trip to ${wizDest} for ${groupDesc}. ${vibeStr} Make it amazing.`;
+    const interestStr = wizInterests.length > 0 ? `Interests: ${wizInterests.join(", ")}.` : "";
+    const notesStr = wizExtraNotes.trim() ? `Additional notes from the traveler: ${wizExtraNotes.trim()}.` : "";
+    const prompt = `Plan a ${wizDuration || durDays + " day"} trip to ${wizDest} for ${groupDesc}. ${interestStr} ${notesStr} Make it amazing.`;
 
     // Send to AI endpoint
     const systemPrompt = `You are a family trip planning assistant. Generate a complete day-by-day itinerary.
@@ -302,7 +305,7 @@ Rules:
   function resetWizard() {
     setWizStep(1); setWizDest(""); setWizDuration(""); setWizDurationInput("");
     setWizGroup(""); setWizGroupDetail(""); setWizGroupSub([]); setWizGroupCustom("");
-    setWizVibes([]); setWizVibeInput(""); setWizGenerating(false); setWizNamePrompt(false);
+    setWizInterests([]); setWizInterestInput(""); setWizExtraNotes(""); setWizGenerating(false); setWizNamePrompt(false);
     setWizName(""); setWizCreatedTrip(null); setWizJustCreated(false); setError("");
   }
 
@@ -327,6 +330,7 @@ Rules:
   if (wizStep > 1 && wizDest) wizAnswers.push({ label: "Destination", value: wizDest });
   if (wizStep > 2 && wizDuration) wizAnswers.push({ label: "Duration", value: wizDuration });
   if (wizStep > 3 && wizGroup) wizAnswers.push({ label: "Group", value: `${wizGroup}${wizGroupDetail ? ` (${wizGroupDetail})` : ""}` });
+  if (wizStep > 4 && wizInterests.length > 0) wizAnswers.push({ label: "Interests", value: wizInterests.join(", ") });
 
   const chipClass = "px-4 py-2 rounded-full text-[13px] font-medium border transition-all cursor-pointer";
   const chipActive = "bg-emerald-500 text-white border-emerald-500";
@@ -570,25 +574,39 @@ Rules:
                   </div>
                 )}
 
-                {/* Step 4: Vibe */}
+                {/* Step 4: Interests */}
                 {wizStep === 4 && (
                   <div className="animate-fade-in py-8">
-                    <input type="text" value={wizVibeInput} onChange={e => setWizVibeInput(e.target.value)}
+                    <input type="text" value={wizInterestInput} onChange={e => setWizInterestInput(e.target.value)}
                       placeholder="e.g. wine tasting, snorkeling..." autoFocus
-                      className={inputClass} onKeyDown={e => e.key === "Enter" && addCustomVibe()} />
+                      className={inputClass} onKeyDown={e => e.key === "Enter" && addCustomInterest()} />
                     <div className="flex flex-wrap justify-center gap-2 mt-5 max-w-md mx-auto">
                       {["History & culture", "Outdoors & hiking", "Food & local cuisine", "Beaches & water", "Art & museums", "Family fun", "Relaxing & slow pace", "Adventure & thrills"].map(v => (
-                        <button key={v} onClick={() => toggleVibe(v)}
-                          className={`${chipClass} text-[12px] px-3 py-1.5 ${wizVibes.includes(v) ? chipActive : chipInactive}`}>{v}</button>
+                        <button key={v} onClick={() => toggleInterest(v)}
+                          className={`${chipClass} text-[12px] px-3 py-1.5 ${wizInterests.includes(v) ? chipActive : chipInactive}`}>{v}</button>
                       ))}
-                      {/* Custom vibes */}
-                      {wizVibes.filter(v => !["History & culture", "Outdoors & hiking", "Food & local cuisine", "Beaches & water", "Art & museums", "Family fun", "Relaxing & slow pace", "Adventure & thrills"].includes(v)).map(v => (
-                        <button key={v} onClick={() => toggleVibe(v)}
+                      {/* Custom interests */}
+                      {wizInterests.filter(v => !["History & culture", "Outdoors & hiking", "Food & local cuisine", "Beaches & water", "Art & museums", "Family fun", "Relaxing & slow pace", "Adventure & thrills"].includes(v)).map(v => (
+                        <button key={v} onClick={() => toggleInterest(v)}
                           className={`${chipClass} text-[12px] px-3 py-1.5 ${chipActive}`}>{v}</button>
                       ))}
                     </div>
                     <div className="flex justify-center gap-3 mt-6">
                       <button onClick={() => setWizStep(3)} className={btnSecondary}>Back</button>
+                      <button onClick={() => setWizStep(5)} className={btnPrimary}>Next</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 5: Extra Notes */}
+                {wizStep === 5 && (
+                  <div className="animate-fade-in py-8">
+                    <h2 className="text-[20px] font-bold text-gray-900 mb-6">Anything else I should know?</h2>
+                    <input type="text" value={wizExtraNotes} onChange={e => setWizExtraNotes(e.target.value)}
+                      placeholder="Must-see spots, dietary needs, mobility concerns, budget..."
+                      autoFocus className={inputClass} onKeyDown={e => e.key === "Enter" && handleGenerate()} />
+                    <div className="flex justify-center gap-3 mt-6">
+                      <button onClick={() => setWizStep(4)} className={btnSecondary}>Back</button>
                       <button onClick={handleGenerate} disabled={wizGenerating} className={btnPrimary}>Generate itinerary</button>
                     </div>
                   </div>

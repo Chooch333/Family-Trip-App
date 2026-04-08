@@ -162,3 +162,4 @@ ALTER TABLE public.trips ADD COLUMN group_type text;
 ALTER TABLE public.trips ADD COLUMN group_detail text;
 ALTER TABLE public.trips ADD COLUMN interests text;
 ALTER TABLE public.trips ADD COLUMN cover_image_url text;
+ALTER TABLE public.trips ADD COLUMN extra_notes text;
