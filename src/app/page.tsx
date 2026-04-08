@@ -340,7 +340,7 @@ Rules:
   const btnSecondary = "px-6 py-3 rounded-xl bg-white border border-gray-200 text-gray-600 font-medium text-sm hover:bg-gray-50 transition-colors";
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 overflow-auto">
       {/* CSS animations */}
       <style>{`
         @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -390,7 +390,7 @@ Rules:
         </div>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 py-6">
+      <div className="max-w-2xl mx-auto px-4 py-6">
         {loading ? (
           <div className="text-center py-16">
             <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3 animate-pulse">
@@ -402,15 +402,24 @@ Rules:
           </div>
         ) : mode === "home" ? (
           <>
-            {trips.length > 0 && (
-              <div className="mb-6">
+            <div className="flex gap-2 mb-6">
+              <button onClick={() => { setMode("wizard"); resetWizard(); }}
+                className="flex-1 py-3.5 px-4 rounded-xl bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 transition-colors shadow-sm">
+                Create a new trip
+              </button>
+              <button onClick={() => { setMode("join"); setError(""); }}
+                className="flex-1 py-3.5 px-4 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors">
+                Join with invite code
+              </button>
+            </div>
+            {trips.length > 0 ? (
+              <div>
                 <h2 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Your trips</h2>
-                <div className="space-y-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {trips.map(card => (
                     <div key={card.trip.id} className="relative group">
                       <button onClick={() => handleTripClick(card)}
                         className="w-full bg-white rounded-xl border border-gray-100 hover:border-emerald-200 hover:shadow-sm transition-all overflow-hidden text-left">
-                        {/* Image area */}
                         <div className="h-28 w-full relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${card.trip.cover_color || "#1D9E75"}, #2563eb, #7c3aed)` }}>
                           {card.trip.cover_image_url && <img src={card.trip.cover_image_url} alt="" className="w-full h-full object-cover absolute inset-0" />}
                           <div className="absolute inset-0 bg-black/20" />
@@ -418,7 +427,6 @@ Rules:
                             <span className="text-white font-bold text-xl drop-shadow-lg">{card.trip.destination || card.trip.name}</span>
                           </div>
                         </div>
-                        {/* Bottom */}
                         <div className="p-3.5">
                           <div className="font-semibold text-[15px] text-gray-900 truncate group-hover:text-emerald-700 transition-colors">{card.trip.name}</div>
                           <div className="text-xs text-gray-500 mt-0.5">{tripSummary(card.trip)} · {card.memberCount} {card.memberCount === 1 ? "traveler" : "travelers"}</div>
@@ -440,9 +448,8 @@ Rules:
                   ))}
                 </div>
               </div>
-            )}
-            {trips.length === 0 && (
-              <div className="text-center py-10 mb-6">
+            ) : (
+              <div className="text-center py-10">
                 <div className="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center mx-auto mb-4">
                   <svg className="w-7 h-7 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
@@ -452,16 +459,6 @@ Rules:
                 <p className="text-sm text-gray-500">Create a trip or join one with an invite code.</p>
               </div>
             )}
-            <div className="space-y-2">
-              <button onClick={() => { setMode("wizard"); resetWizard(); }}
-                className="w-full py-3.5 px-4 rounded-xl bg-emerald-500 text-white font-semibold text-sm hover:bg-emerald-600 transition-colors shadow-sm">
-                Create a new trip
-              </button>
-              <button onClick={() => { setMode("join"); setError(""); }}
-                className="w-full py-3.5 px-4 rounded-xl bg-white border border-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-50 transition-colors">
-                Join a trip with invite code
-              </button>
-            </div>
           </>
         ) : mode === "wizard" ? (
           <div className="text-center">
