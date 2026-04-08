@@ -60,12 +60,123 @@ function formatTime12(time: string | null): string {
   return `${h}:${m} ${ampm}`;
 }
 
-// --- Leaflet Map (dynamic, SSR-safe) ---
+// --- Leaflet Maps (dynamic, SSR-safe) ---
 const TripMap = dynamic(() => import("./TripMap"), { ssr: false, loading: () => (
   <div className="flex-1 bg-gray-100 flex items-center justify-center">
     <p className="text-gray-400 text-xs">Loading map...</p>
   </div>
 )});
+const RegionalMap = dynamic(() => import("./RegionalMap"), { ssr: false, loading: () => (
+  <div className="w-full bg-gray-100" style={{ height: 130 }} />
+)});
+
+// --- Haversine distance in km ---
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// --- Extract unique route cities from stops in travel order ---
+interface RouteCity { name: string; lat: number; lng: number; dayIdx: number; }
+
+function extractRouteCities(stops: Stop[], days: Day[]): RouteCity[] {
+  const dayIdxMap = new Map<string, number>();
+  days.forEach((d, i) => dayIdxMap.set(d.id, i));
+
+  // Get all non-transit stops with coords, sorted by day then sort_order
+  const ordered = stops
+    .filter(s => s.latitude && s.longitude && s.stop_type !== "transit")
+    .sort((a, b) => {
+      const dayA = dayIdxMap.get(a.day_id) ?? 0;
+      const dayB = dayIdxMap.get(b.day_id) ?? 0;
+      if (dayA !== dayB) return dayA - dayB;
+      return a.sort_order - b.sort_order;
+    });
+
+  if (ordered.length === 0) return [];
+
+  // Cluster stops within ~15km into "cities", take centroid and derive name
+  const cities: RouteCity[] = [];
+  let clusterStops = [ordered[0]];
+
+  for (let i = 1; i < ordered.length; i++) {
+    const prev = clusterStops[clusterStops.length - 1];
+    const curr = ordered[i];
+    const dist = haversineKm(prev.latitude!, prev.longitude!, curr.latitude!, curr.longitude!);
+    if (dist < 15) {
+      clusterStops.push(curr);
+    } else {
+      // Finalize cluster
+      const lat = clusterStops.reduce((s, st) => s + st.latitude!, 0) / clusterStops.length;
+      const lng = clusterStops.reduce((s, st) => s + st.longitude!, 0) / clusterStops.length;
+      const dayIdx = dayIdxMap.get(clusterStops[0].day_id) ?? 0;
+      const name = deriveCityName(clusterStops, stops, days, dayIdxMap);
+      cities.push({ name, lat, lng, dayIdx });
+      clusterStops = [curr];
+    }
+  }
+  // Final cluster
+  const lat = clusterStops.reduce((s, st) => s + st.latitude!, 0) / clusterStops.length;
+  const lng = clusterStops.reduce((s, st) => s + st.longitude!, 0) / clusterStops.length;
+  const dayIdx = dayIdxMap.get(clusterStops[0].day_id) ?? 0;
+  const name = deriveCityName(clusterStops, stops, days, dayIdxMap);
+  cities.push({ name, lat, lng, dayIdx });
+
+  // Deduplicate consecutive same-name cities
+  return cities.filter((c, i) => i === 0 || c.name !== cities[i - 1].name);
+}
+
+function deriveCityName(clusterStops: Stop[], allStops: Stop[], days: Day[], dayIdxMap: Map<string, number>): string {
+  // Try to find a transit stop right before this cluster that says "to CityName"
+  const firstStop = clusterStops[0];
+  const dayStops = allStops
+    .filter(s => s.day_id === firstStop.day_id)
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const idx = dayStops.findIndex(s => s.id === firstStop.id);
+  if (idx > 0) {
+    for (let i = idx - 1; i >= 0; i--) {
+      if (dayStops[i].stop_type === "transit") {
+        const toMatch = dayStops[i].name.match(/(?:to|towards|into|arriving?\s+in)\s+(.+)/i);
+        if (toMatch) return toMatch[1].trim();
+        break;
+      }
+    }
+  }
+
+  // Try day title
+  const dayIdx = dayIdxMap.get(firstStop.day_id) ?? 0;
+  const dayTitle = days[dayIdx]?.title;
+  if (dayTitle) {
+    // If title has arrows or slashes, pick the relevant part
+    const parts = dayTitle.split(/[→\-–\/,&]/).map(s => s.trim()).filter(Boolean);
+    if (parts.length === 1) return parts[0];
+    // Return the first part that isn't already used (rough heuristic)
+    return parts[0];
+  }
+
+  // Fallback: use first stop name, shortened
+  const stopName = clusterStops[0].name;
+  // Try to extract a place-sounding short name
+  return stopName.split(/[,\-–]/).map(s => s.trim())[0] || stopName;
+}
+
+// --- Check if trip is multi-city (>50km span) ---
+function isMultiCityTrip(stops: Stop[]): boolean {
+  const coords = stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit");
+  if (coords.length < 2) return false;
+  let maxDist = 0;
+  for (let i = 0; i < coords.length; i++) {
+    for (let j = i + 1; j < coords.length; j++) {
+      const d = haversineKm(coords[i].latitude!, coords[i].longitude!, coords[j].latitude!, coords[j].longitude!);
+      if (d > maxDist) maxDist = d;
+      if (maxDist > 50) return true; // Early exit
+    }
+  }
+  return maxDist > 50;
+}
 
 export default function TripDashboard() {
   const router = useRouter();
@@ -426,6 +537,8 @@ Rules:
   const currentDayStops = days[activeDay] ? stops.filter(s => s.day_id === days[activeDay].id) : [];
   const onlineMembers = members.filter(m => m.is_online);
   const stopsWithCoords = stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit");
+  const multiCity = useMemo(() => isMultiCityTrip(stops), [stops]);
+  const routeCities = useMemo(() => multiCity ? extractRouteCities(stops, days) : [], [stops, days, multiCity]);
 
   const lightboxPhotos = lightboxStop?.photos ? (lightboxStop.photos as { url: string; attribution?: string }[]) : [];
 
@@ -526,6 +639,32 @@ Rules:
             )}
           </div>
         </div>
+
+        {/* Route strip — multi-city trips only */}
+        {multiCity && routeCities.length >= 2 && (
+          <div className="px-3 py-2 border-b border-gray-100 bg-white flex-shrink-0 text-center">
+            <div className="text-[14px] font-medium text-gray-600 flex items-center justify-center gap-1 flex-wrap">
+              {routeCities.map((city, i) => {
+                // Highlight if active day's stops are near this city
+                const activeDayId = days[activeDay]?.id;
+                const activeDayStops = stops.filter(s => s.day_id === activeDayId && s.latitude && s.longitude && s.stop_type !== "transit");
+                const isActiveCity = activeDayStops.some(
+                  s => Math.abs(s.latitude! - city.lat) < 0.15 && Math.abs(s.longitude! - city.lng) < 0.15
+                );
+                const activeDayColor = dayColors[activeDay] || "#1D9E75";
+                return (
+                  <span key={`${city.name}-${i}`} className="whitespace-nowrap">
+                    {i > 0 && <span className="text-gray-300 mx-1">{"\u2192"}</span>}
+                    <span style={{
+                      fontWeight: isActiveCity ? 700 : 500,
+                      color: isActiveCity ? activeDayColor : undefined,
+                    }}>{city.name}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Day tabs — full width across both panels */}
         <div className="flex gap-1.5 px-3 py-2.5 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-end bg-white" style={{ zIndex: 5 }}>
@@ -787,6 +926,16 @@ Rules:
 
           {/* Right panel — Map + Claude */}
           <div className="hidden md:flex md:w-[45%] flex-col overflow-hidden">
+            {/* Regional map strip — multi-city only */}
+            {multiCity && routeCities.length >= 2 && stopsWithCoords.length > 0 && (
+              <RegionalMap
+                stops={stops}
+                days={days}
+                activeDay={activeDay}
+                dayColors={dayColors}
+                routeCities={routeCities}
+              />
+            )}
             <div className="flex-1 relative">
               {stopsWithCoords.length > 0 ? (
                 <>
