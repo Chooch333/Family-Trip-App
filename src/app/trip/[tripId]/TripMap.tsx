@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from "react-leaflet";
 import type { Day, Stop } from "@/lib/database.types";
 import "leaflet/dist/leaflet.css";
@@ -11,74 +11,119 @@ export interface TripMapProps {
   dayColors: string[];
   pulsingStop: string | null;
   selectedStop: string | null;
-  fitMode: "day" | "all";
   onPinClick: (stop: Stop) => void;
 }
 
-// Haversine distance in km
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+// --- Detect if a transit stop is non-car (train, bus, flight, ferry, etc.) ---
+function isNonCarTransit(stop: Stop): boolean {
+  if (stop.stop_type !== "transit") return false;
+  const text = `${stop.name} ${stop.description || ""}`.toLowerCase();
+  // Match non-car transit types
+  if (text.match(/\b(train|rail|tgv|eurostar|amtrak|high.?speed)\b/)) return true;
+  if (text.match(/\b(bus|coach|shuttle)\b/)) return true;
+  if (text.match(/\b(flight|fly|plane|airport|airline)\b/)) return true;
+  if (text.match(/\b(ferry|boat|ship|catamaran|cruise)\b/)) return true;
+  if (text.match(/\b(metro|subway|tram|trolley|cable.?car)\b/)) return true;
+  // If it's transit but doesn't match car/drive keywords, treat as non-car
+  if (text.match(/\b(car|drive|driving|road.?trip|rental)\b/)) return false;
+  // Default for generic transit: check if it has "to <City>" pattern (implies inter-city)
+  // Be conservative — only split on clearly non-car transit
+  return false;
 }
 
-// Cluster stops into groups where consecutive stops > threshold km apart create a split
+// --- Extract destination city name from transit stop ---
+function extractTransitDestination(stop: Stop): string {
+  const name = stop.name;
+  const toMatch = name.match(/(?:to|towards|into|arriving?\s+in)\s+(.+)/i);
+  if (toMatch) return toMatch[1].trim();
+  return "";
+}
+
+// --- Extract origin city name from transit stop ---
+function extractTransitOrigin(stop: Stop): string {
+  const name = stop.name;
+  const fromMatch = name.match(/from\s+(.+?)(?:\s+to\s+)/i);
+  if (fromMatch) return fromMatch[1].trim();
+  return "";
+}
+
+// --- Cluster day stops by non-car transit splits ---
 interface StopCluster { stops: Stop[]; label: string; }
 
-function clusterStops(allDayStops: Stop[], nonTransitStops: Stop[], thresholdKm: number): StopCluster[] {
-  if (nonTransitStops.length === 0) return [];
-  const clusters: StopCluster[] = [{ stops: [nonTransitStops[0]], label: "" }];
-  for (let i = 1; i < nonTransitStops.length; i++) {
-    const prev = nonTransitStops[i - 1];
-    const curr = nonTransitStops[i];
-    if (prev.latitude && prev.longitude && curr.latitude && curr.longitude) {
-      const dist = haversineKm(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
-      if (dist > thresholdKm) {
-        clusters.push({ stops: [curr], label: "" });
-        continue;
-      }
-    }
-    clusters[clusters.length - 1].stops.push(curr);
+function clusterByTransit(dayStops: Stop[]): StopCluster[] {
+  const sorted = [...dayStops].sort((a, b) => a.sort_order - b.sort_order);
+  const activityStops = sorted.filter(s => s.stop_type !== "transit" && s.latitude && s.longitude);
+
+  if (activityStops.length === 0) return [];
+
+  // Find non-car transit split points
+  const splitTransits: Stop[] = [];
+  for (const s of sorted) {
+    if (isNonCarTransit(s)) splitTransits.push(s);
   }
 
-  // Derive labels: look for transit stops between clusters to get city names
+  // If no non-car transit, return single cluster with no label
+  if (splitTransits.length === 0) {
+    return [{ stops: activityStops, label: "" }];
+  }
+
+  // Walk through sorted stops, splitting at non-car transit boundaries
+  const clusters: StopCluster[] = [];
+  let currentGroup: Stop[] = [];
+  let lastTransit: Stop | null = null;
+
+  for (const stop of sorted) {
+    if (isNonCarTransit(stop)) {
+      // Finalize current group if it has activity stops
+      if (currentGroup.length > 0) {
+        clusters.push({ stops: currentGroup, label: "" });
+        currentGroup = [];
+      }
+      lastTransit = stop;
+    } else if (stop.stop_type !== "transit" && stop.latitude && stop.longitude) {
+      currentGroup.push(stop);
+    }
+  }
+  // Finalize last group
+  if (currentGroup.length > 0) {
+    clusters.push({ stops: currentGroup, label: "" });
+  }
+
+  // Derive labels for split clusters
   if (clusters.length >= 2) {
-    // First cluster: use the name/area from the first stop or find preceding context
-    // Try to extract city from stop names or find a transit stop that names the destination
-    for (let ci = 0; ci < clusters.length; ci++) {
-      // Look for transit stop right before this cluster's first stop in the full day stops list
-      const firstStop = clusters[ci].stops[0];
-      const idxInAll = allDayStops.findIndex(s => s.id === firstStop.id);
-      if (ci === 0) {
-        // First cluster: check day title or use common location from stop names
-        // Try to find a transit stop after this cluster that mentions origin
-        const lastStop = clusters[ci].stops[clusters[ci].stops.length - 1];
-        const lastIdx = allDayStops.findIndex(s => s.id === lastStop.id);
-        // Look for transit stop after this cluster
-        for (let ti = lastIdx + 1; ti < allDayStops.length; ti++) {
-          if (allDayStops[ti].stop_type === "transit") {
-            // Extract origin from transit name like "Train to Florence" → origin is where we are
-            const name = allDayStops[ti].name;
-            const fromMatch = name.match(/from\s+(.+)/i);
-            if (fromMatch) { clusters[ci].label = fromMatch[1].trim(); break; }
-            break;
-          }
+    // Label first cluster: try to get origin from first non-car transit
+    if (splitTransits.length > 0) {
+      const origin = extractTransitOrigin(splitTransits[0]);
+      if (origin) {
+        clusters[0].label = origin;
+      }
+    }
+
+    // Label subsequent clusters: get destination from the transit that precedes them
+    let transitIdx = 0;
+    for (let ci = 1; ci < clusters.length; ci++) {
+      // Find the transit stop that sits between clusters[ci-1] and clusters[ci]
+      const prevLastStop = clusters[ci - 1].stops[clusters[ci - 1].stops.length - 1];
+      const currFirstStop = clusters[ci].stops[0];
+      for (let ti = transitIdx; ti < splitTransits.length; ti++) {
+        if (splitTransits[ti].sort_order > prevLastStop.sort_order &&
+            splitTransits[ti].sort_order < currFirstStop.sort_order) {
+          const dest = extractTransitDestination(splitTransits[ti]);
+          if (dest) clusters[ci].label = dest;
+          transitIdx = ti + 1;
           break;
         }
       }
-      if (ci > 0 && idxInAll > 0) {
-        // Look backwards for a transit stop that names the destination
-        for (let ti = idxInAll - 1; ti >= 0; ti--) {
-          if (allDayStops[ti].stop_type === "transit") {
-            const name = allDayStops[ti].name;
-            // Extract destination from "Train to Florence", "Drive to Lucca", etc.
-            const toMatch = name.match(/(?:to|towards|into)\s+(.+)/i);
-            if (toMatch) { clusters[ci].label = toMatch[1].trim(); }
-            break;
-          }
-        }
+    }
+
+    // If first cluster still has no label, try to derive from day title or first stop
+    if (!clusters[0].label && splitTransits.length > 0) {
+      const dest = extractTransitDestination(splitTransits[0]);
+      // The first cluster is the origin — if transit says "Train to X", origin is NOT X
+      // Try to use the first stop's name area as fallback
+      if (!clusters[0].label) {
+        const firstStop = clusters[0].stops[0];
+        clusters[0].label = firstStop.name.split(/[,\-–]/).map(s => s.trim())[0] || "";
       }
     }
   }
@@ -106,8 +151,8 @@ function FitBounds({ stops, padding }: { stops: Stop[]; padding?: number }) {
 
 // Single map panel with pins + route line
 function MapPanel({
-  allStops,
-  clusterStops: panelStops,
+  visibleStops,
+  fitStops,
   days,
   activeDay,
   dayColors,
@@ -121,9 +166,10 @@ function MapPanel({
   fitPadding,
   className,
   style,
+  showAllDays,
 }: {
-  allStops: Stop[];
-  clusterStops: Stop[];
+  visibleStops: Stop[];
+  fitStops: Stop[];
   days: Day[];
   activeDay: number;
   dayColors: string[];
@@ -137,27 +183,28 @@ function MapPanel({
   fitPadding?: number;
   className?: string;
   style?: React.CSSProperties;
+  showAllDays?: boolean;
 }) {
-  const stopsWithCoords = useMemo(() => allStops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [allStops]);
-  const panelCoordStops = useMemo(() => panelStops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [panelStops]);
+  const stopsWithCoords = useMemo(() => visibleStops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [visibleStops]);
+  const fitCoordStops = useMemo(() => fitStops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [fitStops]);
 
   // Route line: active day stops in this panel, in sort order
   const routePositions = useMemo(() => {
-    return panelCoordStops
+    return stopsWithCoords
       .filter(s => s.day_id === activeDayId)
       .sort((a, b) => a.sort_order - b.sort_order)
       .map(s => [s.latitude!, s.longitude!] as [number, number]);
-  }, [panelCoordStops, activeDayId]);
+  }, [stopsWithCoords, activeDayId]);
 
-  if (panelCoordStops.length === 0) return null;
+  if (fitCoordStops.length === 0) return null;
 
-  const center: [number, number] = [panelCoordStops[0].latitude!, panelCoordStops[0].longitude!];
+  const center: [number, number] = [fitCoordStops[0].latitude!, fitCoordStops[0].longitude!];
 
   return (
     <div className={className} style={{ ...style, display: "flex", flexDirection: "column" }}>
       {label && (
-        <div className="flex-shrink-0 px-3 py-1.5 bg-white border-b border-gray-100">
-          <span className="text-[13px] font-semibold text-gray-800">{label}</span>
+        <div className="absolute top-3 left-3 z-[1000] px-2.5 py-1 rounded-lg bg-white/90 backdrop-blur-sm border border-gray-200 shadow-sm">
+          <span className="text-[12px] font-semibold text-gray-800">{label}</span>
         </div>
       )}
       <div className="flex-1 min-h-0">
@@ -166,7 +213,7 @@ function MapPanel({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <FitBounds stops={panelCoordStops} padding={fitPadding} />
+        <FitBounds stops={fitCoordStops} padding={fitPadding} />
         {/* Route polyline for active day */}
         {routePositions.length >= 2 && (
           <Polyline
@@ -192,10 +239,13 @@ function MapPanel({
             const isPulsing = pulsingStop === stop.id;
             const isSelected = selectedStop === stop.id;
             const color = dayColors[dayIdx] || "#1D9E75";
-            const radius = isActiveDay ? 14 : 10;
+
+            // In "All stops" mode, non-active day stops are smaller and faded
+            const isOtherDay = showAllDays && !isActiveDay;
+            const radius = isOtherDay ? 8 : (isActiveDay ? 14 : 10);
             const displayRadius = isPulsing ? 22 : (isSelected ? 18 : radius);
-            const fillOpacity = isActiveDay ? 0.9 : 0.6;
-            const strokeWeight = isActiveDay ? 2.5 : 1.5;
+            const fillOpacity = isOtherDay ? 0.35 : (isActiveDay ? 0.9 : 0.6);
+            const strokeWeight = isOtherDay ? 1 : (isActiveDay ? 2.5 : 1.5);
 
             return (
               <CircleMarker
@@ -213,7 +263,7 @@ function MapPanel({
               >
                 <Tooltip direction="top" offset={[0, -radius]} opacity={0.95}>
                   <div className="text-[11px] font-medium">{stop.name}</div>
-                  <div className="text-[9px] text-gray-500">Day {days[dayIdx]?.day_number}{days[dayIdx]?.title ? ` \u00b7 ${days[dayIdx].title}` : ""}</div>
+                  <div className="text-[9px] text-gray-500">Day {days[dayIdx]?.day_number}{days[dayIdx]?.title ? ` · ${days[dayIdx].title}` : ""}</div>
                 </Tooltip>
               </CircleMarker>
             );
@@ -224,7 +274,8 @@ function MapPanel({
   );
 }
 
-export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop, selectedStop, fitMode, onPinClick }: TripMapProps) {
+export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop, selectedStop, onPinClick }: TripMapProps) {
+  const [viewMode, setViewMode] = useState<"day" | "all">("day");
   const nonTransitStops = useMemo(() => stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [stops]);
   const activeDayId = days[activeDay]?.id;
   const activeDayColor = dayColors[activeDay] || "#1D9E75";
@@ -235,18 +286,24 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
     return m;
   }, [days]);
 
-  // Get active day's non-transit stops in order
-  const activeDayStops = useMemo(
-    () => nonTransitStops
-      .filter(s => s.day_id === activeDayId)
-      .sort((a, b) => a.sort_order - b.sort_order),
-    [nonTransitStops, activeDayId]
+  // Reset to "day" view when active day changes
+  useEffect(() => {
+    setViewMode("day");
+  }, [activeDay]);
+
+  // Get all stops for the active day (including transit) for clustering
+  const activeDayAllStops = useMemo(
+    () => stops.filter(s => s.day_id === activeDayId).sort((a, b) => a.sort_order - b.sort_order),
+    [stops, activeDayId]
   );
 
-  // Always show a single map — fits all day stops (walkable or driving)
-  const fitStops = fitMode === "all" ? nonTransitStops : activeDayStops;
+  // Cluster active day stops by non-car transit
+  const clusters = useMemo(() => clusterByTransit(activeDayAllStops), [activeDayAllStops]);
+  const isSplit = clusters.length >= 2;
 
   if (nonTransitStops.length === 0) return null;
+
+  const showAllStops = viewMode === "all";
 
   return (
     <div className="w-full h-full relative flex flex-col">
@@ -258,20 +315,73 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
         }
         .pin-pulse circle { animation: map-pin-pulse 0.8s ease-in-out; }
       `}</style>
-      <MapPanel
-        allStops={stops}
-        clusterStops={fitStops}
-        days={days}
-        activeDay={activeDay}
-        dayColors={dayColors}
-        pulsingStop={pulsingStop}
-        selectedStop={selectedStop}
-        onPinClick={onPinClick}
-        dayIdxMap={dayIdxMap}
-        activeDayId={activeDayId}
-        routeColor={activeDayColor}
-        className="flex-1 min-h-0"
-      />
+
+      {/* Toggle button */}
+      <button
+        onClick={() => setViewMode(v => v === "day" ? "all" : "day")}
+        className="absolute top-3 right-3 z-[1000] px-2.5 py-1.5 rounded-lg bg-white/90 backdrop-blur-sm border border-gray-200 text-[11px] font-medium text-gray-700 hover:bg-white hover:border-gray-300 transition-colors shadow-sm"
+      >
+        {viewMode === "day" ? "All stops" : "Day stops"}
+      </button>
+
+      {showAllStops ? (
+        /* All stops mode: single map showing everything */
+        <MapPanel
+          visibleStops={stops}
+          fitStops={nonTransitStops}
+          days={days}
+          activeDay={activeDay}
+          dayColors={dayColors}
+          pulsingStop={pulsingStop}
+          selectedStop={selectedStop}
+          onPinClick={onPinClick}
+          dayIdxMap={dayIdxMap}
+          activeDayId={activeDayId}
+          routeColor={activeDayColor}
+          className="flex-1 min-h-0"
+          showAllDays={true}
+        />
+      ) : isSplit ? (
+        /* Split maps: one per cluster */
+        <div className="flex-1 min-h-0 flex flex-col">
+          {clusters.map((cluster, i) => (
+            <div key={i} className="flex-1 min-h-0 relative" style={{ borderBottom: i < clusters.length - 1 ? "2px solid #e5e7eb" : undefined }}>
+              <MapPanel
+                visibleStops={cluster.stops}
+                fitStops={cluster.stops}
+                days={days}
+                activeDay={activeDay}
+                dayColors={dayColors}
+                pulsingStop={pulsingStop}
+                selectedStop={selectedStop}
+                onPinClick={onPinClick}
+                dayIdxMap={dayIdxMap}
+                activeDayId={activeDayId}
+                routeColor={activeDayColor}
+                label={cluster.label || undefined}
+                className="w-full h-full"
+                style={{ position: "absolute", inset: 0 }}
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* Single map: all day's stops, zoom to fit */
+        <MapPanel
+          visibleStops={stops}
+          fitStops={clusters.length > 0 ? clusters[0].stops : nonTransitStops.filter(s => s.day_id === activeDayId)}
+          days={days}
+          activeDay={activeDay}
+          dayColors={dayColors}
+          pulsingStop={pulsingStop}
+          selectedStop={selectedStop}
+          onPinClick={onPinClick}
+          dayIdxMap={dayIdxMap}
+          activeDayId={activeDayId}
+          routeColor={activeDayColor}
+          className="flex-1 min-h-0"
+        />
+      )}
     </div>
   );
 }

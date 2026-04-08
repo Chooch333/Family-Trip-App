@@ -224,7 +224,6 @@ export default function TripDashboard() {
   const [expandedStop, setExpandedStop] = useState<string | null>(null);
   const [pulsingStop, setPulsingStop] = useState<string | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
-  const [mapFitMode, setMapFitMode] = useState<"day" | "all">("day");
   // Lightbox state
   const [lightboxStop, setLightboxStop] = useState<Stop | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState(0);
@@ -446,7 +445,6 @@ Rules:
     if (dayIdx >= 0) setActiveDay(dayIdx);
     setExpandedStop(stop.id);
     triggerPulse(stop.id);
-    setMapFitMode("day");
     // Scroll stop into view after a brief delay for re-render
     setTimeout(() => {
       const el = stopRefs.current.get(stop.id);
@@ -497,9 +495,8 @@ Rules:
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, generatingItinerary]);
 
-  // When activeDay changes, set map to day fit mode and deselect stop
+  // When activeDay changes, deselect stop
   useEffect(() => {
-    setMapFitMode("day");
     setExpandedStop(null);
   }, [activeDay]);
 
@@ -964,16 +961,8 @@ Rules:
                     dayColors={dayColors}
                     pulsingStop={pulsingStop}
                     selectedStop={expandedStop}
-                    fitMode={mapFitMode}
                     onPinClick={handleMapPinClick}
                   />
-                  {/* Full map / Day view toggle */}
-                  <button
-                    onClick={() => setMapFitMode(mapFitMode === "all" ? "day" : "all")}
-                    className="absolute top-3 right-3 z-[1000] px-2.5 py-1.5 rounded-lg bg-white/90 backdrop-blur-sm border border-gray-200 text-[11px] font-medium text-gray-700 hover:bg-white hover:border-gray-300 transition-colors shadow-sm"
-                  >
-                    {mapFitMode === "all" ? "Day view" : "Full map"}
-                  </button>
                 </>
               ) : (
                 <div className="flex-1 h-full bg-gray-100 flex items-center justify-center">
