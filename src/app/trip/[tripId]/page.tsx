@@ -950,6 +950,10 @@ Rules:
                 activeDayColor={dayColors[activeDay] || "#1D9E75"}
               />
             )}
+            {/* Separator between regional map and day map */}
+            {multiCity && routeCities.length >= 2 && stopsWithCoords.length > 0 && (
+              <div className="h-3 bg-gray-100 border-y border-gray-200 shrink-0" />
+            )}
             <div className="flex-1 relative">
               {stopsWithCoords.length > 0 ? (
                 <>
