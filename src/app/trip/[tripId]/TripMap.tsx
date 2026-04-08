@@ -245,7 +245,7 @@ function MapPanel({
             const isOtherDay = showAllDays && !isActiveDay;
             const radius = isOtherDay ? 8 : (isActiveDay ? 14 : 10);
             const displayRadius = isPulsing ? 22 : (isSelected ? 18 : radius);
-            const fillOpacity = isOtherDay ? 0.35 : (isActiveDay ? 0.9 : 0.6);
+            const fillOpacity = isOtherDay ? 0.6 : (isActiveDay ? 0.9 : 0.6);
             const strokeWeight = isOtherDay ? 1 : (isActiveDay ? 2.5 : 1.5);
 
             return (
@@ -276,7 +276,7 @@ function MapPanel({
 }
 
 export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop, selectedStop, onPinClick }: TripMapProps) {
-  const [viewMode, setViewMode] = useState<"day" | "all">("day");
+  const [viewMode, setViewMode] = useState<"day" | "all">("all");
   const nonTransitStops = useMemo(() => stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [stops]);
   const activeDayId = days[activeDay]?.id;
   const activeDayColor = dayColors[activeDay] || "#1D9E75";
@@ -287,9 +287,9 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
     return m;
   }, [days]);
 
-  // Reset to "day" view when active day changes
+  // Reset to "all" view when active day changes
   useEffect(() => {
-    setViewMode("day");
+    setViewMode("all");
   }, [activeDay]);
 
   // Get all stops for the active day (including transit) for clustering
@@ -320,7 +320,7 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
       {/* Toggle button */}
       <button
         onClick={() => setViewMode(v => v === "day" ? "all" : "day")}
-        className="absolute top-3 right-3 z-[1000] px-2.5 py-1.5 rounded-lg bg-white/90 backdrop-blur-sm border border-gray-200 text-[11px] font-medium text-gray-700 hover:bg-white hover:border-gray-300 transition-colors shadow-sm"
+        className="absolute top-3 right-3 z-[1000] px-4 py-2.5 rounded-xl bg-white/90 backdrop-blur-sm border border-gray-200 text-[16px] font-medium text-gray-700 hover:bg-white hover:border-gray-300 transition-colors shadow-sm"
       >
         {viewMode === "day" ? "All stops" : "Day stops"}
       </button>
