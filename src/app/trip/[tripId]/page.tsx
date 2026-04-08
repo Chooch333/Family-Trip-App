@@ -519,6 +519,9 @@ Rules:
     load();
   }, [tripId, router]);
 
+  const multiCity = useMemo(() => isMultiCityTrip(stops), [stops]);
+  const routeCities = useMemo(() => multiCity ? extractRouteCities(stops, days) : [], [stops, days, multiCity]);
+
   if (loading) return (
     <div className="h-screen flex items-center justify-center bg-white">
       <div className="text-center">
@@ -537,8 +540,6 @@ Rules:
   const currentDayStops = days[activeDay] ? stops.filter(s => s.day_id === days[activeDay].id) : [];
   const onlineMembers = members.filter(m => m.is_online);
   const stopsWithCoords = stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit");
-  const multiCity = useMemo(() => isMultiCityTrip(stops), [stops]);
-  const routeCities = useMemo(() => multiCity ? extractRouteCities(stops, days) : [], [stops, days, multiCity]);
 
   const lightboxPhotos = lightboxStop?.photos ? (lightboxStop.photos as { url: string; attribution?: string }[]) : [];
 
