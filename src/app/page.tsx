@@ -246,7 +246,7 @@ export default function HomePage() {
     const tripId = await createTripFromIntake();
     if (!tripId) return;
     setWizGenerating(false);
-    router.push(`/trip/${tripId}/vibe`);
+    router.push(`/trip/${tripId}/curating?mode=vibe`);
   }
 
 

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import { getMemberForTrip } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
 import type { Trip, TripMember } from "@/lib/database.types";
@@ -19,6 +19,8 @@ export default function CuratingPage() {
   const router = useRouter();
   const params = useParams();
   const tripId = params.tripId as string;
+  const searchParams = useSearchParams();
+  const mode = searchParams.get("mode") || "curate";
   const [trip, setTrip] = useState<Trip | null>(null);
   const [member, setMember] = useState<TripMember | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -106,7 +108,7 @@ ${t.travel_dates ? `- Travel dates: ${t.travel_dates}. Factor in weather, season
                 color,
                 narrative: dayData.narrative || null,
                 reasoning: dayData.reasoning || null,
-                vibe_status: "locked",
+                vibe_status: mode === "vibe" ? "curated" : "locked",
               }).select().single();
               if (!dayRow) continue;
               for (let j = 0; j < (dayData.stops || []).length; j++) {
@@ -137,7 +139,7 @@ ${t.travel_dates ? `- Travel dates: ${t.travel_dates}. Factor in weather, season
         return;
       }
 
-      router.push(`/trip/${tripId}`);
+      router.push(mode === "vibe" ? `/trip/${tripId}/vibe` : `/trip/${tripId}`);
     }
 
     curate();
