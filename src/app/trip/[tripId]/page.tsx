@@ -367,9 +367,16 @@ Rules:
         }
       } else {
         // Conversational mode — use askClaude with full trip context and tool use
-        const dayContext = days[activeDay]
-          ? `The user is currently viewing Day ${days[activeDay].day_number}${days[activeDay].title ? ` — ${days[activeDay].title}` : ""}.`
-          : undefined;
+        let dayContext: string | undefined;
+        if (days[activeDay]) {
+          const ad = days[activeDay];
+          const adStops = stops
+            .filter(s => s.day_id === ad.id && s.stop_type !== "transit")
+            .sort((a, b) => a.sort_order - b.sort_order)
+            .map((s, i) => `  ${i + 1}. [stop_id: ${s.id}] ${s.name} (${s.stop_type}, ${s.duration_minutes} min)`)
+            .join("\n");
+          dayContext = `The user is currently viewing Day ${ad.day_number}${ad.title ? ` — ${ad.title}` : ""}. When they say "today" or "this day" or ask about the current view, they mean Day ${ad.day_number}. Here are the stops for Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}`;
+        }
         const recentMessages = newMessages.slice(-20);
         const result = await askClaude({
           tripId,

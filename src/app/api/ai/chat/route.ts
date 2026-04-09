@@ -16,23 +16,31 @@ export async function POST(request: NextRequest) {
     if (tools && tools.length > 0) {
       body.tools = tools;
     }
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const fetchOptions = {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
       body: JSON.stringify(body),
-    });
+    };
+    let response = await fetch("https://api.anthropic.com/v1/messages", fetchOptions);
+
+    // Retry once on 529 (overloaded) after a 2-second delay
+    if (response.status === 529) {
+      await new Promise(r => setTimeout(r, 2000));
+      response = await fetch("https://api.anthropic.com/v1/messages", fetchOptions);
+      if (response.status === 529) {
+        return NextResponse.json({ content: [{ type: "text", text: "I'm thinking about that — give me a moment and try again." }] }, { status: 200 });
+      }
+    }
+
     if (!response.ok) {
       const errorBody = await response.text();
       console.error("Anthropic API error:", response.status, response.statusText, errorBody);
-      if (response.status === 529) {
-        return NextResponse.json({ content: [{ type: "text", text: "Claude is busy right now — try again in a moment." }] }, { status: 200 });
-      }
       return NextResponse.json({ content: [{ type: "text", text: `Something went wrong (error ${response.status}). Please try again.` }] }, { status: 200 });
     }
     const data = await response.json();
     return NextResponse.json({ content: data.content || [] });
   } catch (error) {
     console.error("AI chat error:", error);
-    return NextResponse.json({ content: [{ type: "text", text: `Something went wrong. Please try again.` }] }, { status: 200 });
+    return NextResponse.json({ content: [{ type: "text", text: "Something went wrong. Please try again." }] }, { status: 200 });
   }
 }
