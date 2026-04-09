@@ -21,3 +21,14 @@ body {
 }
 .drag-handle { cursor: grab; }
 .drag-handle:active { cursor: grabbing; }
+
+/* Chat markdown styling */
+.chat-markdown p { margin-bottom: 8px; }
+.chat-markdown p:last-child { margin-bottom: 0; }
+.chat-markdown strong { font-weight: 500; }
+.chat-markdown ul, .chat-markdown ol { padding-left: 20px; margin-bottom: 8px; }
+.chat-markdown ul:last-child, .chat-markdown ol:last-child { margin-bottom: 0; }
+.chat-markdown li { margin-bottom: 2px; }
+.chat-markdown code { font-size: 0.9em; background: rgba(0,0,0,0.06); padding: 1px 4px; border-radius: 3px; }
+.chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { font-weight: 600; margin-bottom: 6px; margin-top: 8px; }
+.chat-markdown h1:first-child, .chat-markdown h2:first-child, .chat-markdown h3:first-child { margin-top: 0; }
