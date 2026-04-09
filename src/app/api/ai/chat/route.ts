@@ -20,7 +20,10 @@ export async function POST(request: NextRequest) {
     if (!response.ok) {
       const errorBody = await response.text();
       console.error("Anthropic API error:", response.status, response.statusText, errorBody);
-      return NextResponse.json({ content: `[API Error ${response.status} ${response.statusText}] ${errorBody}` }, { status: 200 });
+      if (response.status === 529) {
+        return NextResponse.json({ content: "Claude is busy right now — try again in a moment." }, { status: 200 });
+      }
+      return NextResponse.json({ content: `Something went wrong (error ${response.status}). Please try again.` }, { status: 200 });
     }
     const data = await response.json();
     const content = data.content?.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n") || "I didn't have a response for that.";

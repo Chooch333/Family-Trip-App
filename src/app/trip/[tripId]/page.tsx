@@ -1140,25 +1140,54 @@ Rules:
                 </div>
               )}
             </div>
-            <div className="border-t border-gray-100 bg-white p-3 flex-shrink-0">
-              <div className="flex items-center gap-2 mb-2">
+            <div className="border-t border-gray-100 bg-white flex flex-col flex-shrink-0" style={{ maxHeight: chatMessages.length > 0 ? "45%" : "auto" }}>
+              <div className="flex items-center gap-2 px-3 pt-3 pb-1">
                 <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" strokeWidth="2"><rect x="3" y="4" width="18" height="14" rx="3" /><path d="M7 10h10" strokeLinecap="round" /></svg>
                 </div>
                 <span className="text-[12px] font-medium text-gray-900">Claude</span>
                 <span className="text-[10px] text-emerald-600">{generatingItinerary ? "· Thinking..." : "· Ready"}</span>
               </div>
+              {/* Chat messages */}
+              {chatMessages.length > 0 && (
+                <div className="flex-1 overflow-y-auto px-3 py-2 min-h-0">
+                  {chatMessages.map((msg, idx) => (
+                    <div key={idx} className={`mb-2 flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[85%] rounded-lg px-2.5 py-1.5 text-[11px] leading-relaxed whitespace-pre-wrap ${
+                        msg.role === "user" ? "bg-emerald-500 text-white" : "bg-gray-100 text-gray-800"
+                      }`}>
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))}
+                  {generatingItinerary && (
+                    <div className="mb-2 flex justify-start">
+                      <div className="bg-gray-100 rounded-lg px-2.5 py-1.5 text-[11px] text-gray-500 flex items-center gap-1.5">
+                        <div className="flex gap-0.5">
+                          <span className="w-1 h-1 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <span className="w-1 h-1 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <span className="w-1 h-1 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                        </div>
+                        Thinking...
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+              )}
               {/* Dynamic prompt chips */}
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {getPromptChips(trip).map(chip => (
-                  <button key={chip} onClick={() => handleChatSend(chip)}
-                    className="px-2.5 py-1 rounded-full text-[10px] border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
-                    disabled={generatingItinerary}>
-                    {chip}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-2">
+              {chatMessages.length === 0 && (
+                <div className="flex flex-wrap gap-1.5 px-3 py-1.5">
+                  {getPromptChips(trip).map(chip => (
+                    <button key={chip} onClick={() => handleChatSend(chip)}
+                      className="px-2.5 py-1 rounded-full text-[10px] border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                      disabled={generatingItinerary}>
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2 px-3 pb-3 pt-1.5">
                 <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
                   placeholder="Ask about your trip..."
                   className="flex-1 text-[11px] px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-emerald-200"
