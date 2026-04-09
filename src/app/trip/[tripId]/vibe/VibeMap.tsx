@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { MapContainer, TileLayer, CircleMarker, Tooltip, useMap } from "react-leaflet";
 import type { Stop } from "@/lib/database.types";
 import "leaflet/dist/leaflet.css";
@@ -23,23 +23,11 @@ function FitAndLock({ stops }: { stops: Stop[] }) {
     const points = stops.filter(isValidCoord).map(s => [s.latitude!, s.longitude!] as [number, number]);
     if (points.length === 0) return;
     if (points.length === 1) {
-      map.setView(points[0], 14, { animate: false });
+      map.setView(points[0], 13, { animate: false });
     } else {
-      map.fitBounds(points, { padding: [20, 20], maxZoom: 15, animate: false });
+      map.fitBounds(points, { padding: [40, 40], maxZoom: 14, animate: false });
     }
   }, [stops, map]);
-  return null;
-}
-
-function FlyToStop({ stop }: { stop: Stop | null }) {
-  const map = useMap();
-  const prevRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!stop || !isValidCoord(stop)) return;
-    if (prevRef.current === stop.id) return;
-    prevRef.current = stop.id;
-    map.flyTo([stop.latitude!, stop.longitude!], 15, { duration: 0.5 });
-  }, [stop, map]);
   return null;
 }
 
@@ -59,27 +47,22 @@ export default function VibeMap({
     return <div className="w-full h-full bg-gray-100 flex items-center justify-center"><span className="text-[11px] text-gray-400">No locations</span></div>;
   }
 
-  const highlightedStop = highlightedStopId ? stopsWithCoords.find(s => s.id === highlightedStopId) || null : null;
-
   return (
     <MapContainer center={[stopsWithCoords[0].latitude!, stopsWithCoords[0].longitude!]} zoom={13} className="w-full h-full" style={{ zIndex: 0 }} zoomControl={false} attributionControl={false}>
       <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
       <FitAndLock stops={stopsWithCoords} />
-      <FlyToStop stop={highlightedStop} />
       {stopsWithCoords.map(stop => {
         const isHighlighted = stop.id === highlightedStopId;
         return (
           <CircleMarker key={stop.id} center={[stop.latitude!, stop.longitude!]}
             radius={isHighlighted ? 9 : 6}
             pathOptions={{
-              fillColor: dayColor,
-              color: isHighlighted ? dayColor : "#fff",
+              fillColor: isHighlighted ? "#f59e0b" : dayColor,
+              color: isHighlighted ? "#f59e0b" : "#fff",
               weight: isHighlighted ? 3 : 2,
               fillOpacity: isHighlighted ? 1 : 0.9,
             }}
-            eventHandlers={{
-              click: () => onPinClick?.(stop.id),
-            }}
+            eventHandlers={{ click: () => onPinClick?.(stop.id) }}
           >
             <Tooltip direction="top" offset={[0, -6]} opacity={0.9}>
               <span className="text-[10px] font-medium">{stop.name}</span>

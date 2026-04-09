@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { getMemberForTrip, getSessionTokens } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
 import { askClaude, executeToolCall, getPromptChips } from "@/lib/claude";
+import DayBar from "@/components/DayBar";
 import ReactMarkdown from "react-markdown";
 import type { Trip, TripMember, Day, Stop, Vote, Proposal } from "@/lib/database.types";
 
@@ -858,30 +859,7 @@ Rules:
         </div>
 
         {/* Day tabs — full width across both panels */}
-        <div className="flex gap-2 px-3 py-3 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-end bg-white" style={{ zIndex: 5, opacity: tripSwitcherOpen ? 0.4 : 1, transition: "opacity 0.2s", pointerEvents: tripSwitcherOpen ? "none" : "auto" }}>
-          {days.map((day, idx) => {
-            const color = getDayColor(idx);
-            const isActive = idx === activeDay;
-            return (
-              <button key={day.id} onClick={() => setActiveDay(idx)}
-                className="rounded-full whitespace-nowrap transition-all flex-shrink-0 font-medium"
-                style={{
-                  backgroundColor: color,
-                  color: "white",
-                  opacity: isActive ? 1 : 0.5,
-                  fontWeight: isActive ? 700 : 500,
-                  padding: isActive ? "8px 16px" : "6px 13px",
-                  fontSize: isActive ? "13.5px" : "12.3px",
-                  boxShadow: isActive ? "0 2px 10px rgba(0,0,0,0.2)" : "none",
-                  transform: isActive ? "translateY(-2px)" : "translateY(0)",
-                }}>
-                Day {day.day_number}{day.title ? ` \u00b7 ${day.title}` : ""}
-              </button>
-            );
-          })}
-          {days.length === 0 && <span className="text-[12px] text-gray-400 py-1">No days yet — create your itinerary to get started</span>}
-          <button onClick={() => setShowAddDay(true)} className="px-3 py-2 rounded-full text-[12px] whitespace-nowrap transition-colors flex-shrink-0 border border-dashed border-gray-300 text-gray-500 hover:border-emerald-400 hover:text-emerald-600">+ Add Day</button>
-        </div>
+        <DayBar days={days} activeDay={activeDay} dayColors={dayColors} onSelectDay={setActiveDay} showAddDay dimmed={tripSwitcherOpen} onAddDay={() => setShowAddDay(true)} />
 
         {showAddDay && (
           <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
