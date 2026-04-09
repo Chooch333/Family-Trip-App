@@ -371,13 +371,7 @@ export default function VibePlanningPage() {
 
       {/* Header */}
       <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <button onClick={() => router.push(`/trip/${tripId}`)} className="text-[13px] text-gray-500 hover:text-gray-700 flex items-center gap-1 transition-colors">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
-            Dashboard
-          </button>
-          <h1 className="text-[18px] font-semibold text-gray-900">Vibe planning</h1>
-        </div>
+        <h1 className="text-[18px] font-semibold text-gray-900">Vibe planning</h1>
         <div className="flex items-center gap-5">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#5DCAA5" }} /><span className="text-[10px] text-gray-500">Curated</span></div>
