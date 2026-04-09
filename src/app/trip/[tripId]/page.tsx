@@ -4,6 +4,7 @@ import { useRouter, useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { getMemberForTrip, getSessionTokens } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
+import { askClaude, getPromptChips } from "@/lib/claude";
 import type { Trip, TripMember, Day, Stop, Vote, Proposal } from "@/lib/database.types";
 
 interface TripSwitcherItem {
@@ -323,39 +324,56 @@ Rules:
     setGeneratingItinerary(true);
 
     try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: newMessages,
-          systemPrompt: ITINERARY_SYSTEM_PROMPT,
-          max_tokens: 8192,
-        }),
-      });
-      const data = await res.json();
-      const fullContent: string = data.content || "";
-      const displayText = fullContent.replace(/```json[\s\S]*?```/g, "").trim();
-      const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)```/);
-      let parsed = false;
-      if (jsonMatch) {
-        try {
-          const itinerary = JSON.parse(jsonMatch[1]);
-          if (itinerary.days && Array.isArray(itinerary.days)) {
-            const msgsWithText = displayText
-              ? [...newMessages, { role: "assistant" as const, content: displayText }]
-              : newMessages;
-            if (displayText) setChatMessages(msgsWithText);
-            await saveItinerary(itinerary.days);
-            const finalMsgs = [...msgsWithText, { role: "assistant" as const, content: "Your itinerary is ready! Check out your days above." }];
-            setChatMessages(finalMsgs);
-            await saveChatMessages(finalMsgs);
-            setItinerarySaved(true);
-            parsed = true;
-          }
-        } catch { /* fall through */ }
-      }
-      if (!parsed) {
-        const finalMsgs = [...newMessages, { role: "assistant" as const, content: fullContent }];
+      if (days.length === 0) {
+        // Itinerary generation mode — use the itinerary system prompt
+        const res = await fetch("/api/ai/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: newMessages,
+            systemPrompt: ITINERARY_SYSTEM_PROMPT,
+            max_tokens: 8192,
+          }),
+        });
+        const data = await res.json();
+        const fullContent: string = data.content || "";
+        const displayText = fullContent.replace(/```json[\s\S]*?```/g, "").trim();
+        const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)```/);
+        let parsed = false;
+        if (jsonMatch) {
+          try {
+            const itinerary = JSON.parse(jsonMatch[1]);
+            if (itinerary.days && Array.isArray(itinerary.days)) {
+              const msgsWithText = displayText
+                ? [...newMessages, { role: "assistant" as const, content: displayText }]
+                : newMessages;
+              if (displayText) setChatMessages(msgsWithText);
+              await saveItinerary(itinerary.days);
+              const finalMsgs = [...msgsWithText, { role: "assistant" as const, content: "Your itinerary is ready! Check out your days above." }];
+              setChatMessages(finalMsgs);
+              await saveChatMessages(finalMsgs);
+              setItinerarySaved(true);
+              parsed = true;
+            }
+          } catch { /* fall through */ }
+        }
+        if (!parsed) {
+          const finalMsgs = [...newMessages, { role: "assistant" as const, content: fullContent }];
+          setChatMessages(finalMsgs);
+          await saveChatMessages(finalMsgs);
+        }
+      } else {
+        // Conversational mode — use askClaude with full trip context
+        const dayContext = days[activeDay]
+          ? `The user is currently viewing Day ${days[activeDay].day_number}${days[activeDay].title ? ` — ${days[activeDay].title}` : ""}.`
+          : undefined;
+        const recentMessages = newMessages.slice(-20);
+        const response = await askClaude({
+          tripId,
+          messages: recentMessages,
+          systemContext: dayContext,
+        });
+        const finalMsgs = [...newMessages, { role: "assistant" as const, content: response }];
         setChatMessages(finalMsgs);
         await saveChatMessages(finalMsgs);
       }
@@ -1128,12 +1146,28 @@ Rules:
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" strokeWidth="2"><rect x="3" y="4" width="18" height="14" rx="3" /><path d="M7 10h10" strokeLinecap="round" /></svg>
                 </div>
                 <span className="text-[12px] font-medium text-gray-900">Claude</span>
-                <span className="text-[10px] text-emerald-600">· Ready</span>
+                <span className="text-[10px] text-emerald-600">{generatingItinerary ? "· Thinking..." : "· Ready"}</span>
               </div>
-              <div className="bg-gray-50 rounded-lg p-2.5 text-[11px] text-gray-500 leading-relaxed mb-2">Ask me anything about your trip — restaurant picks, route optimization, or activity ideas for the kids.</div>
+              {/* Dynamic prompt chips */}
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {getPromptChips(trip).map(chip => (
+                  <button key={chip} onClick={() => handleChatSend(chip)}
+                    className="px-2.5 py-1 rounded-full text-[10px] border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                    disabled={generatingItinerary}>
+                    {chip}
+                  </button>
+                ))}
+              </div>
               <div className="flex gap-2">
-                <input type="text" placeholder="Ask about your trip..." className="flex-1 text-[11px] px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-emerald-200" />
-                <button className="px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 text-[11px] font-medium hover:bg-emerald-200 transition-colors">Send</button>
+                <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
+                  placeholder="Ask about your trip..."
+                  className="flex-1 text-[11px] px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-emerald-200"
+                  onKeyDown={e => e.key === "Enter" && handleChatSend()}
+                  disabled={generatingItinerary} />
+                <button onClick={() => handleChatSend()} disabled={generatingItinerary || !chatInput.trim()}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 text-[11px] font-medium hover:bg-emerald-200 transition-colors disabled:opacity-50">
+                  {generatingItinerary ? "..." : "Send"}
+                </button>
               </div>
             </div>
           </div>
