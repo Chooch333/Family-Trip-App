@@ -31,8 +31,30 @@ function generateDayColors(count: number): string[] {
   });
 }
 
-function stopTypeColor(t: string) { return t === "food" ? "#A32D2D" : t === "visit" ? "#185FA5" : t === "walking" || t === "walk_by" ? "#0F6E56" : t === "experience" || t === "guided_tour" ? "#854F0B" : t === "transit" ? "#6B7280" : "#185FA5"; }
-function stopTypeLabel(t: string) { return t === "food" ? "Food" : t === "visit" ? "Visit" : t === "walking" || t === "walk_by" ? "Walking" : t === "experience" ? "Experience" : t === "guided_tour" ? "Tour" : t === "transit" ? "Transit" : t; }
+function getStopBadge(stop: Stop): { label: string; bg: string; text: string } | null {
+  const name = stop.name.toLowerCase();
+  const desc = (stop.description || "").toLowerCase();
+  const tags = Array.isArray(stop.tags) ? stop.tags.map((t: string) => t.toLowerCase()) : [];
+  const all = `${name} ${desc} ${tags.join(" ")}`;
+  if (all.match(/\b(breakfast|lunch|dinner|restaurant|cafe|coffee|eat|food|bistro|pizz|taco|bakery|brunch|gelato|ice cream)\b/))
+    return { label: "Food", bg: "bg-orange-100", text: "text-orange-700" };
+  if (all.match(/\b(walk|hike|trail|stroll|park|garden|beach|nature|waterfall)\b/))
+    return { label: "Walking", bg: "bg-green-100", text: "text-green-700" };
+  if (all.match(/\b(museum|gallery|castle|monument|cathedral|church|temple|ruins|historic|tour)\b/))
+    return { label: "Visit", bg: "bg-blue-100", text: "text-blue-700" };
+  if (all.match(/\b(shop|market|store|souvenir|mall|boutique)\b/))
+    return { label: "Shopping", bg: "bg-pink-100", text: "text-pink-700" };
+  return null;
+}
+function formatTime12(time: string | null): string {
+  if (!time) return "TBD";
+  const parts = time.slice(0, 5).split(":");
+  let h = parseInt(parts[0], 10);
+  const m = parts[1] || "00";
+  const ampm = h >= 12 ? "PM" : "AM";
+  if (h === 0) h = 12; else if (h > 12) h -= 12;
+  return `${h}:${m} ${ampm}`;
+}
 function getTimePeriod(startTime: string | null, sortOrder: number): string {
   if (!startTime) return sortOrder <= 1 ? "Morning" : sortOrder <= 3 ? "Mid-day" : sortOrder <= 5 ? "Afternoon" : "Evening";
   const m = startTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
@@ -42,53 +64,53 @@ function getTimePeriod(startTime: string | null, sortOrder: number): string {
 }
 function isValidCoord(s: Stop) { return s.latitude != null && s.longitude != null && !(s.latitude === 0 && s.longitude === 0); }
 
-// --- Stop cards ---
-function SortableStopCard({ stop, isBench, isHighlighted, onClick, showAiNote }: { stop: VibeStop; isBench?: boolean; isHighlighted?: boolean; onClick?: () => void; showAiNote?: boolean }) {
+// --- Stop cards (matching dashboard style) ---
+function SortableStopCard({ stop, isBench, isHighlighted, onClick, showAiNote, dayColor }: { stop: VibeStop; isBench?: boolean; isHighlighted?: boolean; onClick?: () => void; showAiNote?: boolean; dayColor: string }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stop.id });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : isBench ? 0.6 : 1 }} className="group">
-      <StopCard stop={stop} dragListeners={listeners} dragAttributes={attributes} isBench={isBench} isHighlighted={isHighlighted} onClick={onClick} showAiNote={showAiNote} />
+      <StopCard stop={stop} dragListeners={listeners} dragAttributes={attributes} isBench={isBench} isHighlighted={isHighlighted} onClick={onClick} showAiNote={showAiNote} dayColor={dayColor} />
     </div>
   );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function StopCard({ stop, dragListeners, dragAttributes, isBench, isHighlighted, onClick, showAiNote }: {
-  stop: VibeStop; dragListeners?: any; dragAttributes?: any; isBench?: boolean; isHighlighted?: boolean; onClick?: () => void; showAiNote?: boolean;
+function StopCard({ stop, dragListeners, dragAttributes, isBench, isHighlighted, onClick, showAiNote, dayColor }: {
+  stop: VibeStop; dragListeners?: any; dragAttributes?: any; isBench?: boolean; isHighlighted?: boolean; onClick?: () => void; showAiNote?: boolean; dayColor: string;
 }) {
-  const color = stopTypeColor(stop.stop_type);
+  const badge = getStopBadge(stop);
   return (
     <div onClick={onClick}
-      className={`rounded-lg border bg-white overflow-hidden transition-all shadow-sm ${isBench ? "hover:opacity-100" : ""} ${isHighlighted ? "ring-2 ring-amber-400 shadow-md" : ""} ${onClick ? "cursor-pointer" : ""}`}
-      style={{ borderColor: isHighlighted ? "#f59e0b" : "#e5e7eb" }}>
-      <div className="h-1.5" style={{ backgroundColor: color }} />
-      <div className="p-3 flex gap-2">
+      className={`bg-white rounded-xl border-2 transition-all overflow-hidden flex flex-col ${isBench ? "hover:opacity-100" : ""} ${isHighlighted ? "shadow-md" : "hover:shadow-sm"} ${onClick ? "cursor-pointer" : ""}`}
+      style={{ borderColor: isHighlighted ? dayColor : "#f3f4f6" }}>
+      {/* Color bar top — matches dashboard day color */}
+      <div className="h-2 w-full flex-shrink-0" style={{ backgroundColor: dayColor }} />
+      <div className="px-3.5 py-3 flex gap-2">
         <div className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 pt-0.5" {...(dragListeners || {})} {...(dragAttributes || {})}>
           <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor"><circle cx="2" cy="2" r="1.5" /><circle cx="8" cy="2" r="1.5" /><circle cx="2" cy="8" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="2" cy="14" r="1.5" /><circle cx="8" cy="14" r="1.5" /></svg>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-[13px] font-medium text-gray-900 truncate">{stop.name}</span>
-            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full flex-shrink-0" style={{ backgroundColor: `${color}15`, color }}>{stopTypeLabel(stop.stop_type)}</span>
+          <div className="flex items-start justify-between gap-1 mb-1.5">
+            <span className="font-semibold text-[14px] text-gray-900 leading-tight line-clamp-2">{stop.name}</span>
+            {badge && <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${badge.bg} ${badge.text} flex-shrink-0 mt-0.5`}>{badge.label}</span>}
           </div>
-          <div className="flex items-center gap-2 text-[11px] text-gray-500 mb-1">
-            <span>{stop.duration_minutes} min</span>
-            {stop.cost_estimate != null && stop.cost_estimate > 0 && <span>· {stop.cost_currency}{stop.cost_estimate}</span>}
-            {!isValidCoord(stop) && stop.stop_type !== "transit" && <span className="text-orange-500">· Location missing</span>}
+          <div className="text-[11px] text-gray-500 mb-2 flex-shrink-0">
+            {formatTime12(stop.start_time)} · {stop.duration_minutes} min
+            {stop.cost_estimate != null && Number(stop.cost_estimate) > 0 && ` · $${Number(stop.cost_estimate).toFixed(0)}`}
           </div>
-          {stop.description && <p className="text-[11px] text-gray-600 leading-relaxed line-clamp-2">{stop.description}</p>}
-          {showAiNote && stop.ai_note && <p className="text-[10px] text-emerald-700 italic mt-1 line-clamp-1">{stop.ai_note}</p>}
+          {stop.description && <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-5">{stop.description}</p>}
+          {showAiNote && stop.ai_note && <p className="text-[10px] text-emerald-700 italic mt-1.5 line-clamp-1">{stop.ai_note}</p>}
         </div>
       </div>
     </div>
   );
 }
 
-function DragOverlayCard({ stop }: { stop: Stop }) {
+function DragOverlayCard({ stop, dayColor }: { stop: Stop; dayColor: string }) {
   return (
-    <div className="w-72 shadow-xl rounded-lg border border-gray-200 bg-white overflow-hidden opacity-90">
-      <div className="h-1.5" style={{ backgroundColor: stopTypeColor(stop.stop_type) }} />
-      <div className="p-3"><span className="text-[13px] font-medium text-gray-900">{stop.name}</span></div>
+    <div className="w-72 shadow-xl rounded-xl border-2 border-gray-200 bg-white overflow-hidden opacity-90">
+      <div className="h-2 w-full" style={{ backgroundColor: dayColor }} />
+      <div className="px-3.5 py-3"><span className="font-semibold text-[14px] text-gray-900">{stop.name}</span></div>
     </div>
   );
 }
@@ -505,7 +527,7 @@ export default function VibePlanningPage() {
                     <div className="flex flex-col gap-2">
                       {group.stops.map(stop => (
                         <div key={stop.id} ref={el => { if (el) stopCardRefs.current.set(stop.id, el); }}>
-                          <SortableStopCard stop={stop} isHighlighted={highlightedStopId === stop.id} onClick={() => handleCardClick(stop.id)} showAiNote={isCurated || isLocked} />
+                          <SortableStopCard stop={stop} isHighlighted={highlightedStopId === stop.id} onClick={() => handleCardClick(stop.id)} showAiNote={isCurated || isLocked} dayColor={dayColors[activeDay] || "#1D9E75"} />
                         </div>
                       ))}
                     </div>
@@ -528,7 +550,7 @@ export default function VibePlanningPage() {
                   <SortableContext items={[...benchStops.map(s => s.id), "bench-droppable"]} strategy={verticalListSortingStrategy}>
                     {benchStops.map(stop => (
                       <div key={stop.id} className="mb-2">
-                        <SortableStopCard stop={stop} isBench isHighlighted={highlightedStopId === stop.id} onClick={() => handleCardClick(stop.id)} />
+                        <SortableStopCard stop={stop} isBench isHighlighted={highlightedStopId === stop.id} onClick={() => handleCardClick(stop.id)} dayColor={dayColors[activeDay] || "#1D9E75"} />
                       </div>
                     ))}
                     {benchStops.length === 0 && <div className="text-center py-10 text-gray-400 text-[12px]">Claude is thinking of options...</div>}
@@ -538,7 +560,7 @@ export default function VibePlanningPage() {
             </div>
           )}
         </div>
-        <DragOverlay>{draggedStop ? <DragOverlayCard stop={draggedStop} /> : null}</DragOverlay>
+        <DragOverlay>{draggedStop ? <DragOverlayCard stop={draggedStop} dayColor={dayColors[activeDay] || "#1D9E75"} /> : null}</DragOverlay>
       </DndContext>
     </div>
   );
