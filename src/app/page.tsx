@@ -215,93 +215,38 @@ export default function HomePage() {
     setWizInterestInput("");
   }
 
-  async function handleGenerate() {
+  // Create trip record + save intake metadata, return tripId
+  async function createTripFromIntake(): Promise<string | null> {
     setWizGenerating(true);
-    // Build trip name from intake
     const durLabel = wizDuration || "Trip";
     const durDays = durLabel === "Weekend" ? "3" : durLabel === "Short trip" ? "5" : durLabel === "Full week" ? "7" : durLabel === "Extended" ? "10" : durLabel;
     const cleanDest = cleanDestination(wizDest) || wizDest;
     const tripTitle = `${cleanDest} \u2014 ${durDays}-Day ${wizGroup || "Trip"}${wizGroup === "Family" ? " Trip" : wizGroup === "Friends" ? " Getaway" : wizGroup === "Solo" ? " Adventure" : ""}`;
 
-    // Create the trip record
     const result = await createTrip(tripTitle, "Organizer");
-    if ("error" in result) { setError(result.error); setWizGenerating(false); return; }
+    if ("error" in result) { setError(result.error); setWizGenerating(false); return null; }
 
-    // Update trip with intake metadata
     await supabase.from("trips").update({
       destination: cleanDest, duration: wizDuration, group_type: wizGroup || null,
       group_detail: wizGroupDetail || null, interests: wizInterests.join(", ") || null,
       travel_dates: wizTravelDates.trim() || null, extra_notes: wizExtraNotes.trim() || null,
     }).eq("id", result.tripId);
 
-    // Build AI prompt from structured answers
-    const groupDesc = wizGroup === "Solo" ? (wizGroupDetail || "solo traveler") :
-      wizGroup === "Friends" ? (wizGroupDetail || "group of friends") :
-      wizGroup === "Family" ? `family with ${wizGroupDetail || "kids"}` : "travelers";
-    const interestStr = wizInterests.length > 0 ? `Interests: ${wizInterests.join(", ")}.` : "";
-    const datesStr = wizTravelDates.trim() ? `Travel dates: ${wizTravelDates.trim()}.` : "";
-    const notesStr = wizExtraNotes.trim() ? `Additional notes from the traveler: ${wizExtraNotes.trim()}.` : "";
-    const prompt = `Plan a ${wizDuration || durDays + " day"} trip to ${wizDest} for ${groupDesc}. ${datesStr} ${interestStr} ${notesStr} Make it amazing.`;
+    return result.tripId;
+  }
 
-    // Send to AI endpoint
-    const systemPrompt = `You are a family trip planning assistant. Generate a complete day-by-day itinerary.
-You MUST respond with a friendly message followed by a JSON code block. The JSON must be wrapped in \`\`\`json and \`\`\` markers.
-The JSON format:
-{"days":[{"day_number":1,"title":"City/area","narrative":"2-3 sentences setting the tone.","stops":[{"name":"Place","description":"Why this is great for this group.","stop_type":"visit","latitude":0.0,"longitude":0.0,"start_time":"9:00 AM","duration_minutes":90,"cost_estimate":0}]}]}
-Rules:
-- ${durDays} days, 4-7 stops per day
-- Real coordinates for non-transit stops
-- stop_type: visit, food, transit, walk_by, guided_tour
-- Transit stops for inter-city travel (no coordinates needed)
-- 12-hour AM/PM times
-- Every stop needs an engaging description for ${groupDesc}
-- Each day needs a narrative
-- Include food stops for meals
-${wizTravelDates.trim() ? `- Travel dates: ${wizTravelDates.trim()}. Factor in weather, seasonal closures, holidays, local events, peak/off-season pricing, and seasonal activities.` : ""}`;
-
-    try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [{ role: "user", content: prompt }], systemPrompt, max_tokens: 8192 }),
-      });
-      const data = await res.json();
-      // API returns content as array of blocks
-      const contentBlocks: Array<{ type: string; text?: string }> = Array.isArray(data.content) ? data.content : [];
-      const fullContent: string = contentBlocks.filter(b => b.type === "text").map(b => b.text || "").join("\n") || (typeof data.content === "string" ? data.content : "");
-      const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        const itinerary = JSON.parse(jsonMatch[1]);
-        if (itinerary.days && Array.isArray(itinerary.days)) {
-          // Save days and stops (reuse logic from trip dashboard)
-          const dayColors = generateWizardColors(itinerary.days.length);
-          for (let i = 0; i < itinerary.days.length; i++) {
-            const dayData = itinerary.days[i];
-            const color = dayColors[i % dayColors.length];
-            const { data: dayRow } = await supabase.from("days").insert({
-              trip_id: result.tripId, day_number: dayData.day_number, title: dayData.title,
-              color, narrative: dayData.narrative || null,
-            }).select().single();
-            if (!dayRow) continue;
-            for (let j = 0; j < (dayData.stops || []).length; j++) {
-              const s = dayData.stops[j];
-              const isTransit = s.stop_type === "transit";
-              await supabase.from("stops").insert({
-                trip_id: result.tripId, day_id: dayRow.id, name: s.name,
-                description: s.description || null,
-                latitude: isTransit ? null : (s.latitude || null),
-                longitude: isTransit ? null : (s.longitude || null),
-                start_time: s.start_time || null, duration_minutes: s.duration_minutes || 60,
-                cost_estimate: s.cost_estimate ?? null, stop_type: s.stop_type || "visit",
-                sort_order: j, created_by: result.member.id,
-              });
-            }
-          }
-        }
-      }
-    } catch { /* itinerary generation failed but trip is created */ }
-
+  async function handleCurate() {
+    const tripId = await createTripFromIntake();
+    if (!tripId) return;
     setWizGenerating(false);
-    router.push(`/trip/${result.tripId}`);
+    router.push(`/trip/${tripId}/curating`);
+  }
+
+  async function handleVibe() {
+    const tripId = await createTripFromIntake();
+    if (!tripId) return;
+    setWizGenerating(false);
+    router.push(`/trip/${tripId}/vibe`);
   }
 
 
@@ -681,10 +626,21 @@ ${wizTravelDates.trim() ? `- Travel dates: ${wizTravelDates.trim()}. Factor in w
                     <h2 className="text-[20px] font-bold text-gray-900 mb-6">Anything else I should know?</h2>
                     <input type="text" value={wizExtraNotes} onChange={e => setWizExtraNotes(e.target.value)}
                       placeholder="Must-see spots, dietary needs, mobility concerns, budget..."
-                      autoFocus className={inputClass} onKeyDown={e => e.key === "Enter" && handleGenerate()} />
+                      autoFocus className={inputClass} />
                     <div className="flex justify-center gap-3 mt-6">
                       <button onClick={() => setWizStep(5)} className={btnSecondary}>Back</button>
-                      <button onClick={handleGenerate} disabled={wizGenerating} className={btnPrimary}>Ready to vibe</button>
+                    </div>
+                    <div className="flex gap-3 mt-5 max-w-md mx-auto">
+                      <button onClick={handleCurate} disabled={wizGenerating}
+                        className="flex-1 py-3.5 rounded-lg text-white font-medium text-[14px] transition-colors disabled:opacity-50"
+                        style={{ backgroundColor: "#1D9E75" }}>
+                        Curate my trip
+                      </button>
+                      <button onClick={handleVibe} disabled={wizGenerating}
+                        className="flex-1 py-3.5 rounded-lg font-medium text-[14px] transition-colors disabled:opacity-50"
+                        style={{ background: "transparent", color: "#534AB7", border: "2px solid #534AB7" }}>
+                        Let&apos;s vibe
+                      </button>
                     </div>
                   </div>
                 )}
