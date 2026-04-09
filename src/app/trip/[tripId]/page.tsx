@@ -2,9 +2,15 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { getMemberForTrip } from "@/lib/session";
+import { getMemberForTrip, getSessionTokens } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
 import type { Trip, TripMember, Day, Stop, Vote, Proposal } from "@/lib/database.types";
+
+interface TripSwitcherItem {
+  trip: Trip;
+  memberCount: number;
+  role: "organizer" | "member";
+}
 
 type ViewId = "itinerary" | "map" | "votes" | "ai" | "journal";
 
@@ -230,6 +236,10 @@ export default function TripDashboard() {
   // Share name prompt
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [nameInput, setNameInput] = useState("");
+  // Trip switcher
+  const [tripSwitcherOpen, setTripSwitcherOpen] = useState(false);
+  const [allTrips, setAllTrips] = useState<TripSwitcherItem[]>([]);
+  const tripButtonRef = useRef<HTMLButtonElement>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const stopRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -534,6 +544,36 @@ Rules:
     load();
   }, [tripId, router]);
 
+  // Fetch all trips for the switcher
+  const loadAllTrips = useCallback(async () => {
+    const tokens = getSessionTokens();
+    if (tokens.length === 0) return;
+    // Get all memberships for current user's tokens
+    const memberRows: { trip_id: string; role: "organizer" | "member" }[] = [];
+    for (const token of tokens) {
+      const { data } = await supabase.from("trip_members").select("trip_id, role").eq("session_token", token);
+      if (data) data.forEach((d) => memberRows.push(d as { trip_id: string; role: "organizer" | "member" }));
+    }
+    if (memberRows.length === 0) return;
+    const tripIds = Array.from(new Set(memberRows.map(m => m.trip_id)));
+    const { data: trips } = await supabase.from("trips").select("*").in("id", tripIds).order("updated_at", { ascending: false });
+    if (!trips) return;
+    // Get member counts per trip
+    const items: TripSwitcherItem[] = [];
+    for (const t of trips as Trip[]) {
+      const { count } = await supabase.from("trip_members").select("*", { count: "exact", head: true }).eq("trip_id", t.id);
+      const membership = memberRows.find(m => m.trip_id === t.id);
+      items.push({ trip: t, memberCount: count || 0, role: membership?.role || "member" });
+    }
+    // Sort: current trip first, then by updated_at (already sorted)
+    items.sort((a, b) => {
+      if (a.trip.id === tripId) return -1;
+      if (b.trip.id === tripId) return 1;
+      return 0;
+    });
+    setAllTrips(items);
+  }, [tripId]);
+
   const multiCity = useMemo(() => isMultiCityTrip(stops), [stops]);
   const routeData = useMemo(() => multiCity ? extractRouteCities(stops, days) : { cities: [], dayToCityIndex: new Map<number, number>() }, [stops, days, multiCity]);
   const routeCities = routeData.cities;
@@ -612,17 +652,110 @@ Rules:
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 flex-shrink-0 z-10 bg-white">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 flex-shrink-0 z-20 bg-white relative">
           <div className="flex items-center gap-2.5">
-            <button onClick={() => router.push("/")} className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center hover:bg-emerald-600 transition-colors flex-shrink-0" title="Home">
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
+            {/* Trip switcher button */}
+            <button
+              ref={tripButtonRef}
+              onClick={() => { if (!tripSwitcherOpen) loadAllTrips(); setTripSwitcherOpen(!tripSwitcherOpen); }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white transition-colors"
+              style={{
+                border: tripSwitcherOpen ? "1.5px solid #1D9E75" : "1.5px solid #d1d5db",
+                backgroundColor: tripSwitcherOpen ? "#f0fdf8" : "white",
+              }}
+              onMouseEnter={e => { if (!tripSwitcherOpen) (e.currentTarget as HTMLElement).style.borderColor = "#9ca3af"; }}
+              onMouseLeave={e => { if (!tripSwitcherOpen) (e.currentTarget as HTMLElement).style.borderColor = "#d1d5db"; }}
+            >
+              <div className="text-left">
+                <div className="text-[15px] font-medium text-gray-900 leading-tight">{trip.name}</div>
+                <div className="text-[11px] text-gray-500 leading-tight">{trip.duration || `${days.length} days`} · {stops.length} stops · {members.length} travelers</div>
+              </div>
+              <svg className={`w-4 h-4 text-gray-400 transition-transform ${tripSwitcherOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </button>
-            <div>
-              <h1 className="text-[15px] font-semibold text-gray-900">{trip.name}</h1>
-              <p className="text-[11px] text-gray-500">{members.length} travelers · {stops.length} stops</p>
-            </div>
+            {/* + New trip button */}
+            <button
+              onClick={() => router.push("/")}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors"
+              style={{ border: "1.5px solid #1D9E75", background: "#E1F5EE", color: "#085041" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#9FE1CB"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#E1F5EE"; }}
+            >
+              <span className="text-sm font-bold">+</span> New trip
+            </button>
+
+            {/* Trip switcher dropdown */}
+            {tripSwitcherOpen && (
+              <>
+                {/* Overlay to close dropdown on outside click */}
+                <div className="fixed inset-0 z-30" onClick={() => setTripSwitcherOpen(false)} />
+                <div className="absolute left-4 top-full mt-1 z-40 bg-white rounded-xl shadow-lg" style={{ width: 340, border: "1.5px solid #e5e7eb", padding: 6 }}>
+                  {allTrips.map((item, idx) => {
+                    const isCurrent = item.trip.id === tripId;
+                    const abbrev = item.trip.name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+                    const travelInfo = [
+                      item.trip.duration,
+                      item.trip.travel_dates,
+                      `${item.memberCount} travelers`,
+                    ].filter(Boolean).join(" · ");
+                    return (
+                      <div key={item.trip.id}>
+                        <button
+                          onClick={() => {
+                            if (!isCurrent) {
+                              setTripSwitcherOpen(false);
+                              router.push(`/trip/${item.trip.id}`);
+                            } else {
+                              setTripSwitcherOpen(false);
+                            }
+                          }}
+                          className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors"
+                          style={{
+                            backgroundColor: isCurrent ? "#E1F5EE" : "transparent",
+                          }}
+                          onMouseEnter={e => { if (!isCurrent) (e.currentTarget as HTMLElement).style.backgroundColor = "#f5f5f4"; }}
+                          onMouseLeave={e => { if (!isCurrent) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                        >
+                          <div className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold flex-shrink-0" style={{ background: "#F1EFE8", color: "#5F5E5A" }}>
+                            {abbrev}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[14px] font-medium text-gray-900 truncate">{item.trip.name}</div>
+                            <div className="text-[11px] text-gray-500 truncate">{travelInfo}</div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={item.role === "organizer" ? { background: "#E1F5EE", color: "#085041" } : { background: "#E6F1FB", color: "#0C447C" }}>
+                              {item.role === "organizer" ? "Organizer" : "Invited"}
+                            </span>
+                            {isCurrent && (
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="#1D9E75" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </div>
+                        </button>
+                        {idx === allTrips.length - 1 && <div style={{ height: 0.5, background: "#e5e7eb", margin: "4px 0" }} />}
+                      </div>
+                    );
+                  })}
+                  {/* Start a new trip row */}
+                  <button
+                    onClick={() => { setTripSwitcherOpen(false); router.push("/"); }}
+                    className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors"
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = "#E1F5EE"; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
+                  >
+                    <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "#E1F5EE", color: "#1D9E75" }}>
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                      </svg>
+                    </div>
+                    <div className="text-[14px] font-medium text-gray-900">Start a new trip</div>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {isOrganizer && <div className="flex gap-1">
@@ -660,7 +793,7 @@ Rules:
         </div>
 
         {/* Day tabs — full width across both panels */}
-        <div className="flex gap-2 px-3 py-3 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-end bg-white" style={{ zIndex: 5 }}>
+        <div className="flex gap-2 px-3 py-3 overflow-x-auto border-b border-gray-100 flex-shrink-0 items-end bg-white" style={{ zIndex: 5, opacity: tripSwitcherOpen ? 0.4 : 1, transition: "opacity 0.2s", pointerEvents: tripSwitcherOpen ? "none" : "auto" }}>
           {days.map((day, idx) => {
             const color = getDayColor(idx);
             const isActive = idx === activeDay;
@@ -700,7 +833,7 @@ Rules:
           </div>
         )}
 
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0" style={{ opacity: tripSwitcherOpen ? 0.4 : 1, transition: "opacity 0.2s", pointerEvents: tripSwitcherOpen ? "none" : "auto" }}>
           {/* Left panel */}
           <div className="w-full md:w-[55%] md:border-r border-gray-100 flex flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto px-3 py-2" onClick={() => setExpandedStop(null)}>
