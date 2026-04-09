@@ -4,7 +4,7 @@ import { useRouter, useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { getMemberForTrip, getSessionTokens } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
-import { askClaude, getPromptChips } from "@/lib/claude";
+import { askClaude, executeToolCall, getPromptChips } from "@/lib/claude";
 import ReactMarkdown from "react-markdown";
 import type { Trip, TripMember, Day, Stop, Vote, Proposal } from "@/lib/database.types";
 
@@ -337,7 +337,9 @@ Rules:
           }),
         });
         const data = await res.json();
-        const fullContent: string = data.content || "";
+        // API returns content as array of blocks — extract text
+        const contentBlocks: Array<{ type: string; text?: string }> = Array.isArray(data.content) ? data.content : [];
+        const fullContent: string = contentBlocks.filter(b => b.type === "text").map(b => b.text || "").join("\n") || (typeof data.content === "string" ? data.content : "");
         const displayText = fullContent.replace(/```json[\s\S]*?```/g, "").trim();
         const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)```/);
         let parsed = false;
@@ -364,17 +366,39 @@ Rules:
           await saveChatMessages(finalMsgs);
         }
       } else {
-        // Conversational mode — use askClaude with full trip context
+        // Conversational mode — use askClaude with full trip context and tool use
         const dayContext = days[activeDay]
           ? `The user is currently viewing Day ${days[activeDay].day_number}${days[activeDay].title ? ` — ${days[activeDay].title}` : ""}.`
           : undefined;
         const recentMessages = newMessages.slice(-20);
-        const response = await askClaude({
+        const result = await askClaude({
           tripId,
           messages: recentMessages,
           systemContext: dayContext,
         });
-        const finalMsgs = [...newMessages, { role: "assistant" as const, content: response }];
+
+        // Execute any tool calls
+        const toolResults: string[] = [];
+        for (const tc of result.toolCalls) {
+          const r = await executeToolCall(tripId, tc);
+          toolResults.push(r);
+        }
+
+        // Refresh stops if any tools were executed
+        if (result.toolCalls.length > 0) {
+          const { data: freshStops } = await supabase.from("stops").select("*").eq("trip_id", tripId).is("version_owner", null).order("sort_order");
+          if (freshStops) setStops(freshStops as Stop[]);
+        }
+
+        // Build display message: Claude's text + tool action summaries
+        const displayParts: string[] = [];
+        if (result.text) displayParts.push(result.text);
+        if (toolResults.length > 0 && !result.text) {
+          displayParts.push(toolResults.join(". ") + ".");
+        }
+        const displayText = displayParts.join("\n\n") || "Done!";
+
+        const finalMsgs = [...newMessages, { role: "assistant" as const, content: displayText }];
         setChatMessages(finalMsgs);
         await saveChatMessages(finalMsgs);
       }
