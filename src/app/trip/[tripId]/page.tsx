@@ -239,6 +239,8 @@ export default function TripDashboard() {
   // Share name prompt
   const [showNamePrompt, setShowNamePrompt] = useState(false);
   const [nameInput, setNameInput] = useState("");
+  // Trip summary splash
+  const [showTripSplash, setShowTripSplash] = useState(false);
   // Trip switcher
   const [tripSwitcherOpen, setTripSwitcherOpen] = useState(false);
   const [allTrips, setAllTrips] = useState<TripSwitcherItem[]>([]);
@@ -576,7 +578,18 @@ Rules:
         supabase.from("proposals").select("*").eq("trip_id", tripId).eq("status", "pending"),
         supabase.from("ai_conversations").select("*").eq("trip_id", tripId).eq("member_id", member.id).order("updated_at", { ascending: false }).limit(1),
       ]);
-      if (tripRes.data) setTrip(tripRes.data as Trip);
+      if (tripRes.data) {
+        setTrip(tripRes.data as Trip);
+        // Show trip summary splash once per session
+        const t = tripRes.data as Trip & { trip_summary?: string | null };
+        if (t.trip_summary && typeof window !== "undefined") {
+          const key = `splash_seen_${tripId}`;
+          if (!sessionStorage.getItem(key)) {
+            setShowTripSplash(true);
+            sessionStorage.setItem(key, "1");
+          }
+        }
+      }
       if (membersRes.data) setMembers(membersRes.data as TripMember[]);
       if (daysRes.data) setDays(daysRes.data as Day[]);
       if (stopsRes.data) setStops(stopsRes.data as Stop[]);
@@ -594,6 +607,27 @@ Rules:
     }
     load();
   }, [tripId, router]);
+
+  // Generate trip_summary if missing (for splash overlay)
+  useEffect(() => {
+    if (!trip || (trip as Trip & { trip_summary?: string | null }).trip_summary || days.length === 0) return;
+    (async () => {
+      const result = await askClaude({
+        tripId,
+        messages: [{ role: "user", content: "Write a single exciting paragraph (3-4 sentences) summarizing this entire trip. Text only, no tools." }],
+        systemContext: "Generate a trip summary. Text only, no tools.",
+      });
+      if (result.text) {
+        await supabase.from("trips").update({ trip_summary: result.text }).eq("id", tripId);
+        setTrip(prev => prev ? { ...prev, trip_summary: result.text } as Trip : prev);
+        // Show splash if not already seen
+        if (typeof window !== "undefined" && !sessionStorage.getItem(`splash_seen_${tripId}`)) {
+          setShowTripSplash(true);
+          sessionStorage.setItem(`splash_seen_${tripId}`, "1");
+        }
+      }
+    })();
+  }, [trip, days.length, tripId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch all trips for the switcher (cached, never blocks dropdown)
   const tripsFetchedAt = useRef<number>(0);
@@ -669,6 +703,18 @@ Rules:
 
   return (
     <div className="h-screen flex bg-white overflow-hidden">
+      {/* Trip summary splash overlay */}
+      {showTripSplash && (trip as Trip & { trip_summary?: string | null }).trip_summary && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl max-w-lg mx-4 p-8 shadow-2xl">
+            <h2 className="text-[20px] font-semibold text-gray-900 mb-4">{trip.name}</h2>
+            <p className="text-[14px] text-gray-700 leading-relaxed mb-6">{(trip as Trip & { trip_summary?: string | null }).trip_summary}</p>
+            <button onClick={() => setShowTripSplash(false)} className="w-full py-3 rounded-lg text-white font-medium text-[14px]" style={{ backgroundColor: "#1D9E75" }}>
+              Dive in
+            </button>
+          </div>
+        </div>
+      )}
       {/* Lightbox overlay */}
       {lightboxStop && lightboxPhotos.length > 0 && (
         <div className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center" onClick={closeLightbox}>

@@ -301,7 +301,7 @@ ${wizTravelDates.trim() ? `- Travel dates: ${wizTravelDates.trim()}. Factor in w
     } catch { /* itinerary generation failed but trip is created */ }
 
     setWizGenerating(false);
-    router.push(`/trip/${result.tripId}/vibe`);
+    router.push(`/trip/${result.tripId}`);
   }
 
 
