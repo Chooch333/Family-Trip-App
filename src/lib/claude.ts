@@ -43,7 +43,7 @@ export async function askClaude({ tripId, messages, systemContext }: AskClaudePa
   try {
     // Fetch trip data for context
     const [tripRes, daysRes, stopsRes] = await Promise.all([
-      supabase.from("trips").select("*").eq("id", tripId).single(),
+      supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
       supabase.from("days").select("*").eq("trip_id", tripId).order("day_number"),
       supabase.from("stops").select("*").eq("trip_id", tripId).is("version_owner", null).order("sort_order"),
     ]);

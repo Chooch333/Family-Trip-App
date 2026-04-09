@@ -54,7 +54,7 @@ export function clearSession(): void {
 export async function getCurrentMember(): Promise<TripMember | null> {
   const token = getSessionToken();
   if (!token) return null;
-  const { data, error } = await supabase.from("trip_members").select("*").eq("session_token", token).single();
+  const { data, error } = await supabase.from("trip_members").select("*").eq("session_token", token).maybeSingle();
   if (error || !data) return null;
   await supabase.from("trip_members").update({ is_online: true, last_seen_at: new Date().toISOString() }).eq("id", data.id);
   return data as TripMember;
@@ -64,7 +64,7 @@ export async function getMemberForTrip(tripId: string): Promise<TripMember | nul
   const tokens = getSessionTokens();
   if (tokens.length === 0) return null;
   for (const token of tokens) {
-    const { data } = await supabase.from("trip_members").select("*").eq("session_token", token).eq("trip_id", tripId).single();
+    const { data } = await supabase.from("trip_members").select("*").eq("session_token", token).eq("trip_id", tripId).maybeSingle();
     if (data) return data as TripMember;
   }
   return null;
@@ -75,7 +75,7 @@ export async function getAllMemberships(): Promise<TripMember[]> {
   if (tokens.length === 0) return [];
   const members: TripMember[] = [];
   for (const token of tokens) {
-    const { data } = await supabase.from("trip_members").select("*").eq("session_token", token).single();
+    const { data } = await supabase.from("trip_members").select("*").eq("session_token", token).maybeSingle();
     if (data) members.push(data as TripMember);
   }
   return members;
@@ -94,10 +94,10 @@ export async function rejoinAsMember(memberId: string): Promise<{ member: TripMe
 export async function joinTrip(
   inviteCode: string, displayName: string
 ): Promise<{ member: TripMember; token: string } | { error: string }> {
-  const { data: trip, error: tripError } = await supabase.from("trips").select("id").eq("invite_code", inviteCode).single();
+  const { data: trip, error: tripError } = await supabase.from("trips").select("id").eq("invite_code", inviteCode).maybeSingle();
   if (tripError || !trip) return { error: "Trip not found. Check the invite link and try again." };
 
-  const { data: existing } = await supabase.from("trip_members").select("id, session_token").eq("trip_id", trip.id).eq("display_name", displayName).single();
+  const { data: existing } = await supabase.from("trip_members").select("id, session_token").eq("trip_id", trip.id).eq("display_name", displayName).maybeSingle();
   if (existing?.session_token) {
     addSessionToken(existing.session_token);
     const member = await getMemberForTrip(trip.id);
