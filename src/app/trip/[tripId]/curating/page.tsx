@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { getMemberForTrip } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
@@ -22,8 +22,12 @@ export default function CuratingPage() {
   const [trip, setTrip] = useState<Trip | null>(null);
   const [member, setMember] = useState<TripMember | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const startedRef = useRef(false);
 
   useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+
     async function curate() {
       // Auth check
       const m = await getMemberForTrip(tripId);
@@ -135,7 +139,7 @@ ${t.travel_dates ? `- Travel dates: ${t.travel_dates}. Factor in weather, season
     }
 
     curate();
-  }, [tripId, router]);
+  }, [tripId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Build progress steps from intake
   const progressSteps = [
