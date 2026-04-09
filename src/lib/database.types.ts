@@ -30,6 +30,7 @@ export type Database = {
         Row: {
           id: string; trip_id: string; day_number: number; date: string | null;
           title: string | null; color: string; narrative: string | null; created_at: string;
+          vibe_status: string | null; reasoning: string | null;
         };
         Insert: Record<string, unknown>;
         Update: Record<string, unknown>;

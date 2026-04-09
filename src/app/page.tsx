@@ -265,7 +265,9 @@ ${wizTravelDates.trim() ? `- Travel dates: ${wizTravelDates.trim()}. Factor in w
         body: JSON.stringify({ messages: [{ role: "user", content: prompt }], systemPrompt, max_tokens: 8192 }),
       });
       const data = await res.json();
-      const fullContent: string = data.content || "";
+      // API returns content as array of blocks
+      const contentBlocks: Array<{ type: string; text?: string }> = Array.isArray(data.content) ? data.content : [];
+      const fullContent: string = contentBlocks.filter(b => b.type === "text").map(b => b.text || "").join("\n") || (typeof data.content === "string" ? data.content : "");
       const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)```/);
       if (jsonMatch) {
         const itinerary = JSON.parse(jsonMatch[1]);
@@ -299,7 +301,7 @@ ${wizTravelDates.trim() ? `- Travel dates: ${wizTravelDates.trim()}. Factor in w
     } catch { /* itinerary generation failed but trip is created */ }
 
     setWizGenerating(false);
-    router.push(`/trip/${result.tripId}`);
+    router.push(`/trip/${result.tripId}/vibe`);
   }
 
 
@@ -502,15 +504,36 @@ ${wizTravelDates.trim() ? `- Travel dates: ${wizTravelDates.trim()}. Factor in w
         ) : mode === "wizard" ? (
           <div className="text-center">
             {/* Generating state */}
-            {wizGenerating && (
-              <div className="animate-fade-in py-16">
-                <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4 animate-pulse">
-                  <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><rect x="3" y="4" width="18" height="14" rx="3" strokeWidth="1.5" /><path d="M7 10h10" strokeLinecap="round" strokeWidth="1.5" /></svg>
+            {wizGenerating && (() => {
+              const progressSteps = [
+                "Checking must-see landmarks",
+                "Researching weather and crowds",
+                ...(wizExtraNotes.toLowerCase().match(/food|restaurant|eat|cuisine/) ? ["Finding the best food spots"] : []),
+                ...(wizInterests.some(i => i.toLowerCase().match(/history|museum|heritage/)) ? ["Curating historical sites"] : []),
+                ...(wizGroup === "Family" ? ["Filtering for family-friendly options"] : []),
+                ...(wizExtraNotes.toLowerCase().match(/dog|pet/) ? ["Finding pet-friendly venues"] : []),
+                "Building day-by-day draft",
+              ];
+              return (
+                <div className="animate-fade-in py-16 flex flex-col items-center">
+                  <div className="w-12 h-12 rounded-full border-[3px] border-gray-200 border-t-purple-500 animate-spin mb-6" />
+                  <p className="text-[18px] font-semibold text-gray-900 mb-2">Claude is curating your trip</p>
+                  <p className="text-[13px] text-gray-500 mb-6">
+                    Researching {wizDest || "your destination"}{wizTravelDates ? ` in ${wizTravelDates}` : ""} for your {wizGroup?.toLowerCase() || "group"}...
+                  </p>
+                  <div className="flex flex-col gap-2.5 text-left">
+                    {progressSteps.map((step, i) => (
+                      <div key={step} className="flex items-center gap-2.5 text-[13px] animate-fade-in" style={{ animationDelay: `${i * 1.2}s`, animationFillMode: "backwards" }}>
+                        <svg className="w-4 h-4 text-purple-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span className="text-gray-700">{step}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <p className="text-[17px] font-semibold text-gray-900 mb-2">Claude is building your itinerary...</p>
-                <p className="text-[13px] text-gray-500">Finding stops, calculating timing, picking the good stuff</p>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Wizard steps */}
             {!wizGenerating && (
@@ -661,7 +684,7 @@ ${wizTravelDates.trim() ? `- Travel dates: ${wizTravelDates.trim()}. Factor in w
                       autoFocus className={inputClass} onKeyDown={e => e.key === "Enter" && handleGenerate()} />
                     <div className="flex justify-center gap-3 mt-6">
                       <button onClick={() => setWizStep(5)} className={btnSecondary}>Back</button>
-                      <button onClick={handleGenerate} disabled={wizGenerating} className={btnPrimary}>Generate itinerary</button>
+                      <button onClick={handleGenerate} disabled={wizGenerating} className={btnPrimary}>Ready to vibe</button>
                     </div>
                   </div>
                 )}
