@@ -544,11 +544,11 @@ Rules:
     load();
   }, [tripId, router]);
 
-  // Fetch all trips for the switcher
+  // Fetch all trips for the switcher (cached, never blocks dropdown)
+  const tripsFetchedAt = useRef<number>(0);
   const loadAllTrips = useCallback(async () => {
     const tokens = getSessionTokens();
     if (tokens.length === 0) return;
-    // Get all memberships for current user's tokens
     const memberRows: { trip_id: string; role: "organizer" | "member" }[] = [];
     for (const token of tokens) {
       const { data } = await supabase.from("trip_members").select("trip_id, role").eq("session_token", token);
@@ -558,21 +558,36 @@ Rules:
     const tripIds = Array.from(new Set(memberRows.map(m => m.trip_id)));
     const { data: trips } = await supabase.from("trips").select("*").in("id", tripIds).order("updated_at", { ascending: false });
     if (!trips) return;
-    // Get member counts per trip
     const items: TripSwitcherItem[] = [];
     for (const t of trips as Trip[]) {
       const { count } = await supabase.from("trip_members").select("*", { count: "exact", head: true }).eq("trip_id", t.id);
       const membership = memberRows.find(m => m.trip_id === t.id);
       items.push({ trip: t, memberCount: count || 0, role: membership?.role || "member" });
     }
-    // Sort: current trip first, then by updated_at (already sorted)
     items.sort((a, b) => {
       if (a.trip.id === tripId) return -1;
       if (b.trip.id === tripId) return 1;
       return 0;
     });
     setAllTrips(items);
+    tripsFetchedAt.current = Date.now();
   }, [tripId]);
+
+  // Pre-fetch trip list on mount, refresh on visibilitychange and staleness
+  useEffect(() => {
+    loadAllTrips();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") loadAllTrips();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    const interval = setInterval(() => {
+      if (Date.now() - tripsFetchedAt.current > 60_000) loadAllTrips();
+    }, 10_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearInterval(interval);
+    };
+  }, [loadAllTrips]);
 
   const multiCity = useMemo(() => isMultiCityTrip(stops), [stops]);
   const routeData = useMemo(() => multiCity ? extractRouteCities(stops, days) : { cities: [], dayToCityIndex: new Map<number, number>() }, [stops, days, multiCity]);
@@ -657,7 +672,7 @@ Rules:
             {/* Trip switcher button */}
             <button
               ref={tripButtonRef}
-              onClick={() => { if (!tripSwitcherOpen) loadAllTrips(); setTripSwitcherOpen(!tripSwitcherOpen); }}
+              onClick={() => setTripSwitcherOpen(!tripSwitcherOpen)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white transition-colors"
               style={{
                 border: tripSwitcherOpen ? "1.5px solid #1D9E75" : "1.5px solid #d1d5db",
