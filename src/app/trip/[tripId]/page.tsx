@@ -73,7 +73,7 @@ const TripMap = dynamic(() => import("./TripMap"), { ssr: false, loading: () => 
   </div>
 )});
 const RegionalMap = dynamic(() => import("./RegionalMap"), { ssr: false, loading: () => (
-  <div className="w-full bg-gray-100" style={{ height: 130 }} />
+  <div className="w-full bg-gray-100" style={{ height: 182 }} />
 )});
 
 // --- Haversine distance in km ---
@@ -1093,6 +1093,7 @@ Rules:
                 routeCities={routeCities}
                 activeCityIndex={activeCityIndex}
                 activeDayColor={dayColors[activeDay] || "#1D9E75"}
+                onSelectDay={setActiveDay}
               />
             )}
             {/* Separator between regional map and day map */}
