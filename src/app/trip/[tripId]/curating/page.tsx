@@ -79,7 +79,7 @@ ${t.travel_dates ? `- Travel dates: ${t.travel_dates}. Factor in weather, season
         const res = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [{ role: "user", content: prompt }], systemPrompt, max_tokens: 8192 }),
+          body: JSON.stringify({ messages: [{ role: "user", content: prompt }], systemPrompt, max_tokens: 16384 }),
         });
         const data = await res.json();
         const contentBlocks: Array<{ type: string; text?: string }> = Array.isArray(data.content) ? data.content : [];
@@ -131,8 +131,10 @@ ${t.travel_dates ? `- Travel dates: ${t.travel_dates}. Factor in weather, season
             }
           }
         }
-      } catch {
-        // Generation failed but trip exists — go to dashboard anyway
+      } catch (err) {
+        console.error("Curation failed:", err);
+        setError("Trip curation failed. Please try again.");
+        return;
       }
 
       router.push(`/trip/${tripId}`);
