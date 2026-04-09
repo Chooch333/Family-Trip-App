@@ -238,14 +238,12 @@ export default function HomePage() {
   async function handleCurate() {
     const tripId = await createTripFromIntake();
     if (!tripId) return;
-    setWizGenerating(false);
     router.push(`/trip/${tripId}/curating`);
   }
 
   async function handleVibe() {
     const tripId = await createTripFromIntake();
     if (!tripId) return;
-    setWizGenerating(false);
     router.push(`/trip/${tripId}/curating?mode=vibe`);
   }
 
