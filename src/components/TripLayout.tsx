@@ -135,7 +135,7 @@ export default function TripLayout({
         {/* Padded panel container — three equal-width panels with even gaps */}
         <div
           className="flex flex-1 min-w-0 min-h-0"
-          style={{ padding: 12, gap: 12 }}
+          style={{ padding: 15, gap: 15 }}
         >
           {/* Left panel — stops */}
           <div

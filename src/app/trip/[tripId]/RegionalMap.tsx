@@ -56,7 +56,7 @@ export default function RegionalMap({ routeCities, activeCityIndex, activeDayCol
   const center: [number, number] = [routeCities[0].lat, routeCities[0].lng];
 
   return (
-    <div className="w-full flex-shrink-0" style={{ height: 182 }}>
+    <div className="w-full flex-shrink-0" style={{ height: 209 }}>
       <MapContainer center={center} zoom={6} className="w-full h-full" style={{ zIndex: 0 }} zoomControl={false} attributionControl={false}>
         <TileLayer
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
