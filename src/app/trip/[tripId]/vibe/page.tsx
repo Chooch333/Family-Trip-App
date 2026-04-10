@@ -16,6 +16,79 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 
 const VibeMap = dynamic(() => import("./VibeMap"), { ssr: false, loading: () => <div className="w-full h-full bg-gray-100" /> });
+const RegionalMap = dynamic(() => import("../RegionalMap"), { ssr: false, loading: () => (
+  <div className="w-full bg-gray-100" style={{ height: 209 }} />
+)});
+
+// --- Multi-city detection helpers (parity with dashboard) ---
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+interface RouteCity { name: string; lat: number; lng: number; dayIndices: number[]; }
+interface RouteCityResult { cities: RouteCity[]; dayToCityIndex: Map<number, number>; }
+
+function deriveCityName(clusterStops: Stop[], allStops: Stop[], days: Day[], dayIdxMap: Map<string, number>): string {
+  if (clusterStops.length === 0) return "";
+  const firstDay = days[dayIdxMap.get(clusterStops[0].day_id) ?? 0];
+  if (firstDay?.title) return firstDay.title;
+  const stopName = clusterStops[0].name;
+  return stopName.split(/[,\-–]/).map(s => s.trim())[0] || stopName;
+}
+
+function extractRouteCities(stops: Stop[], days: Day[]): RouteCityResult {
+  const dayIdxMap = new Map<string, number>();
+  days.forEach((d, i) => dayIdxMap.set(d.id, i));
+  const ordered = stops
+    .filter(s => s.latitude != null && s.longitude != null && s.stop_type !== "transit")
+    .sort((a, b) => {
+      const da = dayIdxMap.get(a.day_id) ?? 0;
+      const db = dayIdxMap.get(b.day_id) ?? 0;
+      if (da !== db) return da - db;
+      return a.sort_order - b.sort_order;
+    });
+  if (ordered.length === 0) return { cities: [], dayToCityIndex: new Map() };
+  const clusters: Stop[][] = [];
+  let current: Stop[] = [ordered[0]];
+  for (let i = 1; i < ordered.length; i++) {
+    const prev = current[current.length - 1];
+    const next = ordered[i];
+    const dist = haversineKm(prev.latitude!, prev.longitude!, next.latitude!, next.longitude!);
+    if (dist > 30) {
+      clusters.push(current);
+      current = [next];
+    } else {
+      current.push(next);
+    }
+  }
+  if (current.length > 0) clusters.push(current);
+  const cities: RouteCity[] = clusters.map(cluster => {
+    const dayIndices = Array.from(new Set(cluster.map(s => dayIdxMap.get(s.day_id) ?? 0)));
+    const lat = cluster.reduce((acc, s) => acc + s.latitude!, 0) / cluster.length;
+    const lng = cluster.reduce((acc, s) => acc + s.longitude!, 0) / cluster.length;
+    return { name: deriveCityName(cluster, stops, days, dayIdxMap), lat, lng, dayIndices };
+  });
+  const dayToCityIndex = new Map<number, number>();
+  cities.forEach((city, ci) => city.dayIndices.forEach(di => dayToCityIndex.set(di, ci)));
+  return { cities, dayToCityIndex };
+}
+
+function isMultiCityTrip(stops: Stop[]): boolean {
+  const coordStops = stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit");
+  if (coordStops.length < 2) return false;
+  let maxDist = 0;
+  for (let i = 0; i < coordStops.length; i++) {
+    for (let j = i + 1; j < coordStops.length; j++) {
+      const d = haversineKm(coordStops[i].latitude!, coordStops[i].longitude!, coordStops[j].latitude!, coordStops[j].longitude!);
+      if (d > maxDist) maxDist = d;
+    }
+  }
+  return maxDist > 50;
+}
 
 type VibeDay = Day & { vibe_status?: string | null; reasoning?: string | null };
 type VibeTrip = Trip & { trip_summary?: string | null };
@@ -410,6 +483,20 @@ export default function VibePlanningPage() {
     });
     return colors;
   }, [optionsData, picksStops, dayColor]);
+
+  // Multi-city route data — drives the regional map strip above the local map (parity with dashboard)
+  const multiCity = useMemo(() => isMultiCityTrip(stops), [stops]);
+  const routeData = useMemo(
+    () => multiCity ? extractRouteCities(stops, days) : { cities: [] as RouteCity[], dayToCityIndex: new Map<number, number>() },
+    [stops, days, multiCity]
+  );
+  const routeCities = routeData.cities;
+  const dayToCityIndex = routeData.dayToCityIndex;
+  const activeCityIndex = dayToCityIndex.get(activeDay) ?? -1;
+  const allCoordStops = useMemo(
+    () => stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"),
+    [stops]
+  );
 
   function optionStopToVibeStop(s: OptionStop, id: string): VibeStop {
     return {
@@ -1061,45 +1148,85 @@ export default function VibePlanningPage() {
       else labelSuffix = ` · Option ${SOURCE_LABELS[selectedOption % SOURCE_LABELS.length]}`;
     }
     return (
-      <div className="flex-1 relative min-h-0">
-        <VibeMap
-          stops={previewMapStops as Stop[]}
-          dayColor={dayColor}
-          highlightedStopId={highlightedStopId}
-          pulsingStopId={pulsingStopId}
-          stopColors={previewStopColors}
-          onPinClick={(id: string) => highlightStop(id)}
-        />
-        {currentDay && (
-          <div
-            className="absolute top-2 left-2 px-2.5 py-1 rounded-md shadow-sm pointer-events-none"
-            style={{
-              backgroundColor: "rgba(255,255,255,0.95)",
-              zIndex: 500,
-              border: `1px solid ${labelColor}`,
-            }}
-          >
-            <div className="text-[10px] font-semibold" style={{ color: labelColor }}>
-              Day {currentDay.day_number}{currentDay.title ? ` · ${currentDay.title}` : ""}
-              {labelSuffix}
+      <>
+        {multiCity && routeCities.length >= 2 && allCoordStops.length > 0 && (
+          <div className="px-3 py-2 border-b border-gray-100 bg-white flex-shrink-0 text-center" style={{ borderBottomWidth: 0.5 }}>
+            <div className="text-[12px] font-medium text-gray-600 flex items-center justify-center gap-1 flex-wrap">
+              {routeCities.map((city, i) => {
+                const isActiveCity = i === activeCityIndex;
+                return (
+                  <span key={`${city.name}-${i}`} className="whitespace-nowrap">
+                    {i > 0 && <span className="text-gray-300 mx-1">→</span>}
+                    <span style={{
+                      fontWeight: isActiveCity ? 700 : 500,
+                      color: isActiveCity ? dayColor : undefined,
+                    }}>{city.name}</span>
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}
-        {optionsData && !cherryPickMode && (
-          <button
-            onClick={() => setOptionsViewMode(m => m === "all" ? "selected" : "all")}
-            className="absolute top-2 right-2 px-2.5 py-1 rounded-md shadow-sm text-[11px] font-medium transition-colors"
-            style={{
-              backgroundColor: "rgba(255,255,255,0.95)",
-              zIndex: 500,
-              border: "1px solid #e5e7eb",
-              color: "#374151",
-            }}
-          >
-            {optionsViewMode === "all" ? "Selected only" : "All sources"}
-          </button>
+        {multiCity && routeCities.length >= 2 && allCoordStops.length > 0 && (
+          <>
+            <RegionalMap
+              routeCities={routeCities}
+              activeCityIndex={activeCityIndex}
+              activeDayColor={dayColor}
+              onSelectDay={(idx) => {
+                setActiveDay(idx);
+                setSelectedVibe(null);
+                setHighlightedStopId(null);
+                setPulsingStopId(null);
+                setSelectedOption(-1);
+                setOptionsViewMode("all");
+                setCherryPickMode(false);
+                setCherryPicks(new Set());
+              }}
+            />
+            <div className="flex-shrink-0 bg-white" style={{ height: 15 }} />
+          </>
         )}
-      </div>
+        <div className="flex-1 relative min-h-0">
+          <VibeMap
+            stops={previewMapStops as Stop[]}
+            dayColor={dayColor}
+            highlightedStopId={highlightedStopId}
+            pulsingStopId={pulsingStopId}
+            stopColors={previewStopColors}
+            onPinClick={(id: string) => highlightStop(id)}
+          />
+          {currentDay && (
+            <div
+              className="absolute top-2 left-2 px-2.5 py-1 rounded-md shadow-sm pointer-events-none"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.95)",
+                zIndex: 500,
+                border: `1px solid ${labelColor}`,
+              }}
+            >
+              <div className="text-[10px] font-semibold" style={{ color: labelColor }}>
+                Day {currentDay.day_number}{currentDay.title ? ` · ${currentDay.title}` : ""}
+                {labelSuffix}
+              </div>
+            </div>
+          )}
+          {optionsData && !cherryPickMode && (
+            <button
+              onClick={() => setOptionsViewMode(m => m === "all" ? "selected" : "all")}
+              className="absolute top-2 right-2 px-2.5 py-1 rounded-md shadow-sm text-[11px] font-medium transition-colors"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.95)",
+                zIndex: 500,
+                border: "1px solid #e5e7eb",
+                color: "#374151",
+              }}
+            >
+              {optionsViewMode === "all" ? "Selected only" : "All sources"}
+            </button>
+          )}
+        </div>
+      </>
     );
   };
 
