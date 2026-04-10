@@ -6,7 +6,7 @@ import { getMemberForTrip } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
 import { askClaude, executeToolCall } from "@/lib/claude";
 import ReactMarkdown from "react-markdown";
-import DayBar from "@/components/DayBar";
+import TripLayout from "@/components/TripLayout";
 import type { Trip, TripMember, Day, Stop } from "@/lib/database.types";
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
@@ -15,11 +15,50 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-const VibeMap = dynamic(() => import("./VibeMap"), { ssr: false, loading: () => <div className="w-full h-full bg-gray-100 rounded-lg" /> });
+const VibeMap = dynamic(() => import("./VibeMap"), { ssr: false, loading: () => <div className="w-full h-full bg-gray-100" /> });
 
 type VibeDay = Day & { vibe_status?: string | null; reasoning?: string | null };
 type VibeTrip = Trip & { trip_summary?: string | null };
 type VibeStop = Stop & { ai_note?: string | null; on_bench?: boolean | null };
+
+interface OptionStop {
+  name: string;
+  stop_type?: string;
+  duration_minutes?: number;
+  latitude?: number;
+  longitude?: number;
+  ai_note?: string;
+}
+interface OptionItem {
+  label: string;
+  summary: string;
+  stops: OptionStop[];
+}
+interface OptionsPayload {
+  options: OptionItem[];
+}
+
+const OPTIONS_SYSTEM_HINT = `When the user asks for other options or you want to present multiple day plan alternatives, respond with a JSON block wrapped in \`\`\`options\`\`\` markers (no other code fence type):
+
+\`\`\`options
+{
+  "options": [
+    {
+      "label": "Short option name",
+      "summary": "One-line summary of this option",
+      "stops": [
+        {"name": "Place", "stop_type": "food|visit|walking|experience", "duration_minutes": 60, "latitude": 0, "longitude": 0, "ai_note": "Why this stop"}
+      ]
+    }
+  ]
+}
+\`\`\`
+
+Provide 2-3 options. Each option should have 4-6 stops with realistic coordinates. Always include this options block when the user asks for other options, alternatives, or different choices for the day.`;
+
+const SOURCE_BORDER = ["#3B82F6", "#EC4899", "#A855F7", "#F59E0B"];
+const SOURCE_BG = ["#DBEAFE", "#FCE7F3", "#F3E8FF", "#FEF3C7"];
+const SOURCE_LABELS = ["A", "B", "C", "D"];
 
 function generateDayColors(count: number): string[] {
   if (count <= 0) return [];
@@ -31,21 +70,6 @@ function generateDayColors(count: number): string[] {
   });
 }
 
-function getStopBadge(stop: Stop): { label: string; bg: string; text: string } | null {
-  const name = stop.name.toLowerCase();
-  const desc = (stop.description || "").toLowerCase();
-  const tags = Array.isArray(stop.tags) ? stop.tags.map((t: string) => t.toLowerCase()) : [];
-  const all = `${name} ${desc} ${tags.join(" ")}`;
-  if (all.match(/\b(breakfast|lunch|dinner|restaurant|cafe|coffee|eat|food|bistro|pizz|taco|bakery|brunch|gelato|ice cream)\b/))
-    return { label: "Food", bg: "bg-orange-100", text: "text-orange-700" };
-  if (all.match(/\b(walk|hike|trail|stroll|park|garden|beach|nature|waterfall)\b/))
-    return { label: "Walking", bg: "bg-green-100", text: "text-green-700" };
-  if (all.match(/\b(museum|gallery|castle|monument|cathedral|church|temple|ruins|historic|tour)\b/))
-    return { label: "Visit", bg: "bg-blue-100", text: "text-blue-700" };
-  if (all.match(/\b(shop|market|store|souvenir|mall|boutique)\b/))
-    return { label: "Shopping", bg: "bg-pink-100", text: "text-pink-700" };
-  return null;
-}
 function formatTime12(time: string | null): string {
   if (!time) return "TBD";
   const parts = time.slice(0, 5).split(":");
@@ -55,79 +79,66 @@ function formatTime12(time: string | null): string {
   if (h === 0) h = 12; else if (h > 12) h -= 12;
   return `${h}:${m} ${ampm}`;
 }
-function getTimePeriod(startTime: string | null, sortOrder: number): string {
-  if (!startTime) return sortOrder <= 1 ? "Morning" : sortOrder <= 3 ? "Mid-day" : sortOrder <= 5 ? "Afternoon" : "Evening";
-  const m = startTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
-  if (!m) return "Morning";
-  let h = parseInt(m[1]); if (m[3].toUpperCase() === "PM" && h !== 12) h += 12; if (m[3].toUpperCase() === "AM" && h === 12) h = 0;
-  return h < 12 ? "Morning" : h < 14 ? "Mid-day" : h < 17 ? "Afternoon" : "Evening";
-}
-function isValidCoord(s: Stop) { return s.latitude != null && s.longitude != null && !(s.latitude === 0 && s.longitude === 0); }
 
-// --- Stop cards (matching dashboard style) ---
-function SortableStopCard({ stop, isBench, isHighlighted, onClick, showAiNote, dayColor }: { stop: VibeStop; isBench?: boolean; isHighlighted?: boolean; onClick?: () => void; showAiNote?: boolean; dayColor: string }) {
+const LOCKED_PREFIX = "__LOCKED__:";
+
+function SortableStopRow({ stop, dayColor, isHighlighted, onClick }: { stop: VibeStop; dayColor: string; isHighlighted: boolean; onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stop.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : isBench ? 0.6 : 1 }} className="group">
-      <StopCard stop={stop} dragListeners={listeners} dragAttributes={attributes} isBench={isBench} isHighlighted={isHighlighted} onClick={onClick} showAiNote={showAiNote} dayColor={dayColor} />
-    </div>
-  );
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function StopCard({ stop, dragListeners, dragAttributes, isBench, isHighlighted, onClick, showAiNote, dayColor }: {
-  stop: VibeStop; dragListeners?: any; dragAttributes?: any; isBench?: boolean; isHighlighted?: boolean; onClick?: () => void; showAiNote?: boolean; dayColor: string;
-}) {
-  const badge = getStopBadge(stop);
-  return (
-    <div onClick={onClick}
-      className={`bg-white rounded-xl border-2 transition-all overflow-hidden flex flex-col ${isBench ? "hover:opacity-100" : ""} ${isHighlighted ? "shadow-md" : "hover:shadow-sm"} ${onClick ? "cursor-pointer" : ""}`}
-      style={{ borderColor: isHighlighted ? dayColor : "#f3f4f6" }}>
-      {/* Color bar top — matches dashboard day color */}
-      <div className="h-2 w-full flex-shrink-0" style={{ backgroundColor: dayColor }} />
-      <div className="px-3.5 py-3 flex gap-2">
-        <div className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 pt-0.5" {...(dragListeners || {})} {...(dragAttributes || {})}>
-          <svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor"><circle cx="2" cy="2" r="1.5" /><circle cx="8" cy="2" r="1.5" /><circle cx="2" cy="8" r="1.5" /><circle cx="8" cy="8" r="1.5" /><circle cx="2" cy="14" r="1.5" /><circle cx="8" cy="14" r="1.5" /></svg>
-        </div>
+    <div
+      ref={setNodeRef}
+      style={style}
+      onClick={onClick}
+      className="flex items-stretch border-b border-gray-100 cursor-pointer transition-colors"
+    >
+      <div
+        className="flex-shrink-0 cursor-grab active:cursor-grabbing flex items-center justify-center text-gray-300 hover:text-gray-500"
+        style={{ width: 18 }}
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor">
+          <circle cx="2" cy="2" r="1.2" /><circle cx="6" cy="2" r="1.2" />
+          <circle cx="2" cy="7" r="1.2" /><circle cx="6" cy="7" r="1.2" />
+          <circle cx="2" cy="12" r="1.2" /><circle cx="6" cy="12" r="1.2" />
+        </svg>
+      </div>
+      <div className="flex-shrink-0" style={{ width: 4, backgroundColor: dayColor }} />
+      <div
+        className="flex-1 min-w-0 px-3 py-2.5 flex items-start gap-2"
+        style={{ backgroundColor: isHighlighted ? "#f9fafb" : "transparent" }}
+      >
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-1 mb-1.5">
-            <span className="font-semibold text-[14px] text-gray-900 leading-tight line-clamp-2">{stop.name}</span>
-            {badge && <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${badge.bg} ${badge.text} flex-shrink-0 mt-0.5`}>{badge.label}</span>}
+          <div className="text-[12px] font-medium text-gray-900 truncate leading-tight">{stop.name}</div>
+          <div className="text-[10px] text-gray-500 mt-0.5 truncate">
+            {stop.stop_type} · {stop.duration_minutes} min
           </div>
-          <div className="text-[11px] text-gray-500 mb-2 flex-shrink-0">
-            {formatTime12(stop.start_time)} · {stop.duration_minutes} min
-            {stop.cost_estimate != null && Number(stop.cost_estimate) > 0 && ` · $${Number(stop.cost_estimate).toFixed(0)}`}
-          </div>
-          {stop.description && <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-5">{stop.description}</p>}
-          {showAiNote && stop.ai_note && <p className="text-[10px] text-emerald-700 italic mt-1.5 line-clamp-1">{stop.ai_note}</p>}
         </div>
+        {stop.start_time && (
+          <div className="text-[10px] text-gray-400 whitespace-nowrap pt-0.5">{formatTime12(stop.start_time)}</div>
+        )}
       </div>
     </div>
   );
 }
 
-function DragOverlayCard({ stop, dayColor }: { stop: Stop; dayColor: string }) {
+function DragOverlayRow({ stop, dayColor }: { stop: VibeStop; dayColor: string }) {
   return (
-    <div className="w-72 shadow-xl rounded-xl border-2 border-gray-200 bg-white overflow-hidden opacity-90">
-      <div className="h-2 w-full" style={{ backgroundColor: dayColor }} />
-      <div className="px-3.5 py-3"><span className="font-semibold text-[14px] text-gray-900">{stop.name}</span></div>
+    <div className="flex items-stretch border border-gray-200 rounded-md bg-white shadow-lg" style={{ width: 260 }}>
+      <div className="flex-shrink-0" style={{ width: 4, backgroundColor: dayColor }} />
+      <div className="flex-1 px-3 py-2.5">
+        <div className="text-[12px] font-medium text-gray-900 truncate">{stop.name}</div>
+      </div>
     </div>
   );
 }
 
-function BenchSkeleton() {
-  return (
-    <div className="flex flex-col gap-2 animate-pulse">
-      {[1, 2, 3, 4].map(i => (
-        <div key={i} className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-          <div className="h-1.5 bg-gray-200" /><div className="p-3"><div className="h-3 bg-gray-200 rounded w-3/4 mb-2" /><div className="h-2.5 bg-gray-100 rounded w-1/2 mb-1" /><div className="h-2.5 bg-gray-100 rounded w-full" /></div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// --- Main ---
 export default function VibePlanningPage() {
   const router = useRouter();
   const params = useParams();
@@ -144,36 +155,40 @@ export default function VibePlanningPage() {
   const [chatInput, setChatInput] = useState("");
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [isThinking, setIsThinking] = useState(false);
-  const [vibeLoading, setVibeLoading] = useState(false);
-  const [benchLoading, setBenchLoading] = useState(false);
   const [highlightedStopId, setHighlightedStopId] = useState<string | null>(null);
-  const [showSummary, setShowSummary] = useState(false);
+  const [allTrips, setAllTrips] = useState<Trip[]>([]);
+
+  // Options overlay
+  const [optionsData, setOptionsData] = useState<OptionsPayload | null>(null);
+  const [selectedOption, setSelectedOption] = useState<number>(0);
+  const [cherryPickMode, setCherryPickMode] = useState(false);
+  const [cherryPicks, setCherryPicks] = useState<Set<string>>(new Set());
+
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const stopCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const dayColors = useMemo(() => generateDayColors(days.length), [days.length]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  // --- Load ---
   useEffect(() => {
     async function load() {
       const member = await getMemberForTrip(tripId);
       if (!member) { router.replace(`/trip/${tripId}/invite`); return; }
       setCurrentMember(member);
-      const [tripRes, daysRes, stopsRes] = await Promise.all([
+      const [tripRes, daysRes, stopsRes, allTripsRes] = await Promise.all([
         supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
         supabase.from("days").select("*").eq("trip_id", tripId).order("day_number"),
         supabase.from("stops").select("*").eq("trip_id", tripId).order("sort_order"),
+        supabase.from("trips").select("*").order("updated_at", { ascending: false }),
       ]);
-      if (tripRes.data) { setTrip(tripRes.data as VibeTrip); if ((tripRes.data as VibeTrip).trip_summary) setShowSummary(true); }
+      if (tripRes.data) setTrip(tripRes.data as VibeTrip);
       if (daysRes.data) setDays(daysRes.data as VibeDay[]);
       if (stopsRes.data) setStops(stopsRes.data as VibeStop[]);
+      if (allTripsRes.data) setAllTrips(allTripsRes.data as Trip[]);
       setLoading(false);
     }
     load();
   }, [tripId, router]);
 
-  // --- Auto-assign vibe_status ---
   useEffect(() => {
     if (days.length === 0 || !trip) return;
     if (!days.some(d => !d.vibe_status)) return;
@@ -191,133 +206,163 @@ export default function VibePlanningPage() {
     assign();
   }, [days.length, stops.length, trip, tripId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // --- Generate trip summary ---
-  useEffect(() => {
-    if (!trip || trip.trip_summary || days.length === 0) return;
-    (async () => {
-      const result = await askClaude({ tripId, messages: [{ role: "user", content: "Write a single exciting paragraph (3-4 sentences) summarizing this entire trip. Text only, no tools." }], systemContext: "Generate a trip summary. Text only, no tools." });
-      if (result.text) { await supabase.from("trips").update({ trip_summary: result.text }).eq("id", tripId); setTrip(prev => prev ? { ...prev, trip_summary: result.text } : prev); setShowSummary(true); }
-    })();
-  }, [trip?.trip_summary, days.length, tripId]); // eslint-disable-line react-hooks/exhaustive-deps
-
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages, isThinking]);
 
-  // --- Derived ---
   const currentDay = days[activeDay] as VibeDay | undefined;
-  const allStopsForDay = useMemo(() => currentDay ? stops.filter(s => s.day_id === currentDay.id).sort((a, b) => a.sort_order - b.sort_order) : [], [currentDay, stops]);
-  const picksStops = useMemo(() => allStopsForDay.filter(s => s.stop_type !== "transit" && !s.on_bench), [allStopsForDay]);
-  const benchStops = useMemo(() => allStopsForDay.filter(s => s.stop_type !== "transit" && s.on_bench), [allStopsForDay]);
-  const lockedCount = days.filter(d => d.vibe_status === "locked").length;
-  const allLocked = days.length > 0 && lockedCount === days.length;
+  const allStopsForDay = useMemo(
+    () => currentDay ? stops.filter(s => s.day_id === currentDay.id).sort((a, b) => a.sort_order - b.sort_order) : [],
+    [currentDay, stops]
+  );
+  const picksStops = useMemo(() => allStopsForDay.filter(s => !s.on_bench), [allStopsForDay]);
   const isCurated = currentDay?.vibe_status === "curated";
   const isCollab = currentDay?.vibe_status === "collab";
   const isLocked = currentDay?.vibe_status === "locked";
+  const dayColor = dayColors[activeDay] || "#1D9E75";
 
-  // --- Vibe pills (#9) ---
   const vibeButtons = useMemo(() => {
     if (!trip) return [];
     const pills: string[] = ["Slow morning", "Hidden gems", "Off the beaten path"];
     const gt = (trip.group_type || "").toLowerCase(), gd = (trip.group_detail || "").toLowerCase();
     const int = (trip.interests || "").toLowerCase(), notes = (trip.extra_notes || "").toLowerCase();
     if (gt === "family" && gd.match(/kid|child|toddler|teen|baby/)) { pills.unshift("Kid energy burn"); pills.push("Stroller-friendly"); }
-    if (int.match(/food|cook|cuisine/)) { pills.unshift("Foodie deep dive"); pills.push("Cooking class"); }
-    if (int.match(/history|culture|museum/)) { pills.push("History nerd mode"); pills.push("Museum day"); }
+    if (int.match(/food|cook|cuisine/)) { pills.unshift("Foodie deep dive"); }
+    if (int.match(/history|culture|museum/)) pills.push("History nerd mode");
     if (notes.match(/dog|pet/)) pills.push("Dog-friendly");
     if (int.match(/outdoor|hike|nature/)) pills.push("Outdoors");
     return pills;
   }, [trip]);
 
-  const anchors = useMemo(() => {
-    if (!isCurated && !isLocked) return [];
-    return [...picksStops].filter(s => s.stop_type !== "transit" && s.stop_type !== "food").sort((a, b) => b.duration_minutes - a.duration_minutes).slice(0, 3);
-  }, [isCurated, isLocked, picksStops]);
+  // Map preview stops: when an option is selected, show that option's stops; in cherry-pick, show checked stops
+  const previewMapStops: VibeStop[] = useMemo(() => {
+    if (!optionsData) return picksStops;
+    if (cherryPickMode) {
+      const flat: VibeStop[] = [];
+      optionsData.options.forEach((opt, optIdx) => {
+        opt.stops.forEach((s, stopIdx) => {
+          const key = `${optIdx}-${stopIdx}`;
+          if (cherryPicks.has(key)) flat.push(optionStopToVibeStop(s, key));
+        });
+      });
+      return flat;
+    }
+    const opt = optionsData.options[selectedOption];
+    if (!opt) return picksStops;
+    return opt.stops.map((s, i) => optionStopToVibeStop(s, `prev-${selectedOption}-${i}`));
+  }, [optionsData, selectedOption, cherryPickMode, cherryPicks, picksStops]);
 
-  const groupedPicks = useMemo(() => {
-    const groups: { period: string; stops: VibeStop[] }[] = [];
-    const order = ["Morning", "Mid-day", "Afternoon", "Evening"];
-    const byP = new Map<string, VibeStop[]>();
-    for (const s of picksStops) { const p = getTimePeriod(s.start_time, s.sort_order); if (!byP.has(p)) byP.set(p, []); byP.get(p)!.push(s); }
-    for (const p of order) { const ss = byP.get(p); if (ss?.length) groups.push({ period: p, stops: ss }); }
-    return groups;
-  }, [picksStops]);
+  function optionStopToVibeStop(s: OptionStop, id: string): VibeStop {
+    return {
+      id,
+      trip_id: tripId,
+      day_id: currentDay?.id || "",
+      name: s.name,
+      stop_type: s.stop_type || "visit",
+      duration_minutes: s.duration_minutes || 60,
+      latitude: s.latitude ?? null,
+      longitude: s.longitude ?? null,
+      sort_order: 0,
+      start_time: null,
+      ai_note: s.ai_note ?? null,
+    } as unknown as VibeStop;
+  }
 
-  const reasoningText = useMemo(() => {
-    if (!currentDay) return null;
-    if (currentDay.reasoning) return currentDay.reasoning;
-    return null; // Never show generic placeholder
-  }, [currentDay]);
+  async function reloadDays() {
+    const { data } = await supabase.from("days").select("*").eq("trip_id", tripId).order("day_number");
+    if (data) setDays(data as VibeDay[]);
+    return data as VibeDay[] | null;
+  }
+  async function reloadStops() {
+    const { data } = await supabase.from("stops").select("*").eq("trip_id", tripId).order("sort_order");
+    if (data) setStops(data as VibeStop[]);
+  }
 
-  // --- Actions ---
-  async function reloadDays() { const { data } = await supabase.from("days").select("*").eq("trip_id", tripId).order("day_number"); if (data) setDays(data as VibeDay[]); return data as VibeDay[] | null; }
-  async function reloadStops() { const { data } = await supabase.from("stops").select("*").eq("trip_id", tripId).order("sort_order"); if (data) setStops(data as VibeStop[]); }
+  function pushLockedMessage(day: VibeDay) {
+    setChatMessages(prev => [
+      ...prev,
+      { role: "assistant", content: `${LOCKED_PREFIX}Day ${day.day_number}${day.title ? ` — ${day.title}` : ""}` },
+    ]);
+  }
 
   async function lockDay(dayId: string) {
     await supabase.from("days").update({ vibe_status: "locked" }).eq("id", dayId);
     const updated = await reloadDays();
-    if (updated) { const next = updated.findIndex((d, i) => i > activeDay && d.vibe_status !== "locked"); if (next >= 0) { setActiveDay(next); setSelectedVibe(null); setHighlightedStopId(null); } }
-  }
-  async function unlockDay(dayId: string) { await supabase.from("days").update({ vibe_status: "collab" }).eq("id", dayId); await reloadDays(); fetchBenchAlternatives(); }
-  async function vibeThisDay(dayId: string) { await supabase.from("days").update({ vibe_status: "collab" }).eq("id", dayId); await reloadDays(); fetchBenchAlternatives(); }
-
-  async function fetchBenchAlternatives() {
-    if (!currentDay) return;
-    setBenchLoading(true);
-    const result = await askClaude({
-      tripId,
-      messages: [{ role: "user", content: `Suggest 4-6 alternative stops for Day ${currentDay.day_number} (${currentDay.title || ""}). Include at least one restaurant/food option and one activity. These should connect to different directions this day could go. Return as JSON array in a code block: [{"name":"...","description":"...","stop_type":"food|visit|walking|experience","duration_minutes":60,"latitude":0,"longitude":0}]. Do NOT use tool calls.` }],
-      systemContext: `Generate bench alternatives for Day ${currentDay.day_number} (day_id: ${currentDay.id}). Include a mix of food and activities. JSON array in a \`\`\`json block. No tool calls.`,
-    });
-    const jsonMatch = result.text.match(/```json\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      try {
-        const alts = JSON.parse(jsonMatch[1]);
-        if (Array.isArray(alts)) {
-          for (let i = 0; i < alts.length; i++) {
-            const a = alts[i];
-            await supabase.from("stops").insert({
-              trip_id: tripId, day_id: currentDay.id, name: a.name || "Alternative",
-              description: a.description || null, stop_type: a.stop_type || "visit",
-              duration_minutes: a.duration_minutes || 60, latitude: a.latitude || null,
-              longitude: a.longitude || null, sort_order: 100 + i, on_bench: true,
-            });
-          }
-          await reloadStops();
-        }
-      } catch { /* parse failed */ }
+    const lockedDay = updated?.find(d => d.id === dayId);
+    if (lockedDay) pushLockedMessage(lockedDay);
+    if (updated) {
+      const next = updated.findIndex((d, i) => i > activeDay && d.vibe_status !== "locked");
+      if (next >= 0) {
+        setActiveDay(next);
+        setSelectedVibe(null);
+        setHighlightedStopId(null);
+      }
     }
-    setBenchLoading(false);
+  }
+  async function unlockDay(dayId: string) {
+    await supabase.from("days").update({ vibe_status: "collab" }).eq("id", dayId);
+    await reloadDays();
   }
 
-  async function handleVibeSelect(vibe: string) {
-    if (!currentDay) return;
-    setSelectedVibe(vibe);
-    setVibeLoading(true);
-    // Send as chat message per spec #9
-    const userMsg = { role: "user" as const, content: `I want to vibe this day toward: "${vibe}". Suggest changes to the current stops and bench accordingly.` };
-    setChatMessages(prev => [...prev, userMsg]);
-    const result = await askClaude({
-      tripId,
-      messages: [...chatMessages, userMsg].slice(-20),
-      systemContext: `The user selected the "${vibe}" vibe for Day ${currentDay.day_number}. Reshape stops on day_id: ${currentDay.id} using tools. Only modify this day.`,
-    });
-    for (const tc of result.toolCalls) await executeToolCall(tripId, tc);
-    await reloadStops();
-    if (result.text) setChatMessages(prev => [...prev, { role: "assistant", content: result.text }]);
-    setVibeLoading(false);
+  function dismissOptions() {
+    setOptionsData(null);
+    setSelectedOption(0);
+    setCherryPickMode(false);
+    setCherryPicks(new Set());
   }
 
-  async function handleRefresh() {
-    if (!currentDay) return;
-    setVibeLoading(true);
-    const result = await askClaude({
-      tripId,
-      messages: [{ role: "user", content: `Show different options for Day ${currentDay.day_number}. ${selectedVibe ? `Keep the "${selectedVibe}" vibe.` : ""}` }],
-      systemContext: `Refresh Day ${currentDay.day_number} (day_id: ${currentDay.id}). Use tools.`,
-    });
-    for (const tc of result.toolCalls) await executeToolCall(tripId, tc);
+  async function goWithOption(optIdx: number) {
+    if (!currentDay || !optionsData) return;
+    const opt = optionsData.options[optIdx];
+    if (!opt) return;
+    await supabase.from("stops").delete().eq("day_id", currentDay.id);
+    let order = 0;
+    for (const s of opt.stops) {
+      await supabase.from("stops").insert({
+        trip_id: tripId,
+        day_id: currentDay.id,
+        name: s.name,
+        stop_type: s.stop_type || "visit",
+        duration_minutes: s.duration_minutes || 60,
+        latitude: s.latitude ?? null,
+        longitude: s.longitude ?? null,
+        sort_order: order++,
+      });
+    }
+    await supabase.from("days").update({ vibe_status: "locked" }).eq("id", currentDay.id);
+    const updated = await reloadDays();
     await reloadStops();
-    if (result.text) setChatMessages(prev => [...prev, { role: "assistant", content: result.text }]);
-    setVibeLoading(false);
+    const lockedDay = updated?.find(d => d.id === currentDay.id);
+    if (lockedDay) pushLockedMessage(lockedDay);
+    dismissOptions();
+  }
+
+  async function lockInPicks() {
+    if (!currentDay || !optionsData) return;
+    await supabase.from("stops").delete().eq("day_id", currentDay.id);
+    let order = 0;
+    for (let optIdx = 0; optIdx < optionsData.options.length; optIdx++) {
+      const opt = optionsData.options[optIdx];
+      for (let stopIdx = 0; stopIdx < opt.stops.length; stopIdx++) {
+        const key = `${optIdx}-${stopIdx}`;
+        if (!cherryPicks.has(key)) continue;
+        const s = opt.stops[stopIdx];
+        await supabase.from("stops").insert({
+          trip_id: tripId,
+          day_id: currentDay.id,
+          name: s.name,
+          stop_type: s.stop_type || "visit",
+          duration_minutes: s.duration_minutes || 60,
+          latitude: s.latitude ?? null,
+          longitude: s.longitude ?? null,
+          sort_order: order++,
+        });
+      }
+    }
+    await supabase.from("days").update({ vibe_status: "locked" }).eq("id", currentDay.id);
+    const updated = await reloadDays();
+    await reloadStops();
+    const lockedDay = updated?.find(d => d.id === currentDay.id);
+    if (lockedDay) pushLockedMessage(lockedDay);
+    dismissOptions();
   }
 
   async function handleChatSend(message?: string) {
@@ -327,241 +372,527 @@ export default function VibePlanningPage() {
     setChatMessages(prev => [...prev, userMsg]);
     setChatInput("");
     setIsThinking(true);
-    const ctx = currentDay ? `Viewing Day ${currentDay.day_number}${currentDay.title ? ` — ${currentDay.title}` : ""}. ${selectedVibe ? `Vibe: "${selectedVibe}".` : ""}` : undefined;
-    const result = await askClaude({ tripId, messages: [...chatMessages, userMsg].slice(-20), systemContext: ctx });
+    const dayCtx = currentDay
+      ? `Viewing Day ${currentDay.day_number}${currentDay.title ? ` — ${currentDay.title}` : ""}. ${selectedVibe ? `Vibe: "${selectedVibe}".` : ""}`
+      : "";
+    const ctx = `${dayCtx}\n\n${OPTIONS_SYSTEM_HINT}`;
+    const result = await askClaude({
+      tripId,
+      messages: [...chatMessages, userMsg].slice(-20),
+      systemContext: ctx,
+    });
     for (const tc of result.toolCalls) await executeToolCall(tripId, tc);
     if (result.toolCalls.length > 0) await reloadStops();
-    if (result.text) setChatMessages(prev => [...prev, { role: "assistant", content: result.text }]);
+
+    const optionsMatch = result.text.match(/```options\s*([\s\S]*?)```/);
+    if (optionsMatch) {
+      try {
+        const parsed = JSON.parse(optionsMatch[1]);
+        if (parsed && Array.isArray(parsed.options) && parsed.options.length > 0) {
+          setOptionsData(parsed as OptionsPayload);
+          setSelectedOption(0);
+          setCherryPickMode(false);
+          setCherryPicks(new Set());
+        }
+      } catch {
+        /* parse failed, fall through */
+      }
+    }
+
+    const displayText = result.text.replace(/```options[\s\S]*?```/g, "").trim();
+    if (displayText) setChatMessages(prev => [...prev, { role: "assistant", content: displayText }]);
     setIsThinking(false);
   }
 
-  // --- DnD ---
+  function handleVibePillClick(vibe: string) {
+    setSelectedVibe(vibe);
+    handleChatSend(`Vibe this day toward: ${vibe}`);
+  }
+
+  function handleShowOptions() {
+    handleChatSend("Show me other options for this day");
+  }
+
   function handleDragStart(e: DragStartEvent) { setDragActiveId(e.active.id as string); }
-  function handleDragEnd(e: DragEndEvent) {
+  async function handleDragEnd(e: DragEndEvent) {
     setDragActiveId(null);
     const { active, over } = e;
-    if (!over || !currentDay) return;
-    const activeId = active.id as string;
-    const overId = over.id as string;
-    const activeStop = stops.find(s => s.id === activeId);
-    if (!activeStop) return;
-    const isFromBench = activeStop.on_bench;
-    const overStop = stops.find(s => s.id === overId);
-    const isOverBench = overId === "bench-droppable" || (overStop?.on_bench ?? false);
-
-    if (isFromBench && !isOverBench) {
-      // Promote from bench to picks
-      (async () => { await supabase.from("stops").update({ on_bench: false, sort_order: picksStops.length }).eq("id", activeId); await reloadStops(); })();
-    } else if (!isFromBench && isOverBench) {
-      // Demote to bench
-      (async () => { await supabase.from("stops").update({ on_bench: true, sort_order: 100 }).eq("id", activeId); await reloadStops(); })();
+    if (!over || active.id === over.id || !currentDay) return;
+    const dayPicks = picksStops;
+    const oldIdx = dayPicks.findIndex(s => s.id === active.id);
+    const newIdx = dayPicks.findIndex(s => s.id === over.id);
+    if (oldIdx < 0 || newIdx < 0) return;
+    const reordered = [...dayPicks];
+    const [moved] = reordered.splice(oldIdx, 1);
+    reordered.splice(newIdx, 0, moved);
+    setStops(prev => prev.map(s => {
+      const idx = reordered.findIndex(r => r.id === s.id);
+      if (idx >= 0) return { ...s, sort_order: idx };
+      return s;
+    }));
+    for (let i = 0; i < reordered.length; i++) {
+      await supabase.from("stops").update({ sort_order: i }).eq("id", reordered[i].id);
     }
   }
 
   const draggedStop = dragActiveId ? stops.find(s => s.id === dragActiveId) : null;
 
-  function handlePinClick(stopId: string) { setHighlightedStopId(stopId); const el = stopCardRefs.current.get(stopId); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" }); }
-  function handleCardClick(stopId: string) { setHighlightedStopId(prev => prev === stopId ? null : stopId); }
+  function toggleCherryPick(key: string) {
+    setCherryPicks(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
-  if (loading) return (<div className="h-screen flex items-center justify-center bg-white"><div className="text-center"><div className="w-10 h-10 rounded-full border-[3px] border-gray-200 border-t-purple-500 animate-spin mx-auto mb-4" /><p className="text-gray-400 text-sm">Loading vibe planning...</p></div></div>);
-  if (!trip || !currentMember) return null;
+  // ---------- Render functions ----------
+  const renderLeftPanel = () => {
+    if (!currentDay) {
+      return <div className="px-4 py-10 text-center text-gray-400 text-[11px]">No days yet</div>;
+    }
 
-  if (allLocked) return (
-    <div className="h-screen flex items-center justify-center bg-white">
-      <div className="text-center">
-        <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-5"><svg className="w-7 h-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg></div>
-        <h1 className="text-[18px] font-medium text-gray-900 mb-1">{trip.name}</h1>
-        <h2 className="text-[22px] font-semibold text-gray-900 mb-2">Your trip is set!</h2>
-        <p className="text-[14px] text-gray-500 mb-8">{days.length} days, {stops.filter(s => s.stop_type !== "transit" && !s.on_bench).length} stops across {new Set(days.map(d => d.title).filter(Boolean)).size} cities</p>
-        <button onClick={() => router.push(`/trip/${tripId}`)} className="px-6 py-3 rounded-lg text-white font-medium text-[14px]" style={{ backgroundColor: "#1D9E75" }}>View your itinerary</button>
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="h-screen flex flex-col bg-white overflow-hidden">
-      {/* Summary overlay */}
-      {showSummary && trip.trip_summary && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl max-w-lg mx-4 p-8 shadow-2xl">
-            <h2 className="text-[20px] font-semibold text-gray-900 mb-4">{trip.name}</h2>
-            <p className="text-[14px] text-gray-700 leading-relaxed mb-6">{trip.trip_summary}</p>
-            <button onClick={() => setShowSummary(false)} className="w-full py-3 rounded-lg text-white font-medium text-[14px]" style={{ backgroundColor: "#1D9E75" }}>Let&apos;s dive in</button>
+    if (cherryPickMode && optionsData) {
+      const allOptionStops: { key: string; stop: OptionStop; sourceIdx: number }[] = [];
+      optionsData.options.forEach((opt, optIdx) => {
+        opt.stops.forEach((stop, stopIdx) => {
+          allOptionStops.push({ key: `${optIdx}-${stopIdx}`, stop, sourceIdx: optIdx });
+        });
+      });
+      return (
+        <>
+          <div
+            className="sticky top-0 z-10 bg-white px-3 py-3 border-b border-gray-100 flex items-center justify-between gap-2 flex-shrink-0"
+            style={{ borderBottomWidth: 0.5 }}
+          >
+            <div className="text-[12px] font-semibold text-gray-900">Your picks</div>
+            <span
+              className="px-2 py-0.5 rounded-full text-[10px] font-medium"
+              style={{ backgroundColor: "#EEEDFE", color: "#534AB7" }}
+            >
+              Building custom
+            </span>
           </div>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-        <h1 className="text-[18px] font-semibold text-gray-900">Vibe planning</h1>
-        <div className="flex items-center gap-5">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#5DCAA5" }} /><span className="text-[10px] text-gray-500">Curated</span></div>
-            <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#AFA9EC" }} /><span className="text-[10px] text-gray-500">Collab</span></div>
-            <div className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#9FE1CB" }} /><span className="text-[10px] text-gray-500">Locked</span></div>
-          </div>
-          <span className="text-[13px] text-gray-500 font-medium">{lockedCount} of {days.length} decided</span>
-        </div>
-      </div>
-
-      {/* Day bar (#1) */}
-      <DayBar days={days} activeDay={activeDay} dayColors={dayColors} onSelectDay={(idx) => { setActiveDay(idx); setSelectedVibe(null); setHighlightedStopId(null); }} />
-
-      {/* Columns (#2, #3) */}
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="flex flex-1 min-h-0 overflow-hidden" style={{ transition: "all 0.3s ease" }}>
-
-          {/* LEFT — Dialogue column */}
-          <div className={`border-r border-gray-100 flex flex-col overflow-y-auto p-5 flex-shrink-0 transition-all duration-300 ${isCollab ? "w-[33.3%]" : "w-[50%]"}`}>
-            <p className="text-[11px] text-gray-400 font-medium mb-1">Day {activeDay + 1} of {days.length}</p>
-            <h2 className="text-[22px] font-semibold text-gray-900 mb-2">{currentDay?.title || `Day ${activeDay + 1}`}</h2>
-
-            {/* Status badge */}
-            {isCurated && <span className="inline-flex self-start px-2.5 py-1 rounded-full text-[11px] font-medium mb-3" style={{ backgroundColor: "#E1F5EE", color: "#085041" }}>Curated</span>}
-            {isCollab && <span className="inline-flex self-start px-2.5 py-1 rounded-full text-[11px] font-medium mb-3" style={{ backgroundColor: "#EEEDFE", color: "#534AB7" }}>Collab</span>}
-            {isLocked && <span className="inline-flex self-start px-2.5 py-1 rounded-full text-[11px] font-medium mb-3" style={{ backgroundColor: "#E1F5EE", color: "#085041" }}>Locked</span>}
-
-            {/* Reasoning (#10, #11, #6) */}
-            {reasoningText && (
-              <div className="mb-4 border-l-2 border-gray-200 pl-3">
-                <h3 className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide mb-1">My read</h3>
-                <div className="text-[12px] text-gray-600 leading-relaxed italic chat-markdown"><ReactMarkdown>{reasoningText}</ReactMarkdown></div>
-              </div>
-            )}
-
-            {/* Map (#4, #8) */}
-            <div className="rounded-lg overflow-hidden mb-4 flex-shrink-0" style={{ height: isCollab ? 140 : 200 }}>
-              <VibeMap stops={picksStops} dayColor={dayColors[activeDay] || "#1D9E75"} highlightedStopId={highlightedStopId} onPinClick={handlePinClick} />
-            </div>
-
-            {/* Anchors (curated/locked) */}
-            {(isCurated || isLocked) && anchors.length > 0 && (
-              <div className="mb-4">
-                <h3 className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Anchors</h3>
-                <div className="flex flex-col gap-2">
-                  {anchors.map(s => (
-                    <div key={s.id} className="rounded-lg p-2.5 border-l-[3px] cursor-pointer hover:bg-gray-50" style={{ borderColor: "#1D9E75", backgroundColor: "#f8fffe" }} onClick={() => handleCardClick(s.id)}>
-                      <p className="text-[12px] font-medium text-gray-900">{s.name}</p>
-                      {s.description && <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{s.description}</p>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Vibe pills (#9, #16) — collab and locked days */}
-            {(isCollab || isLocked) && (
-              <div className="mb-4">
-                <h3 className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Vibes</h3>
-                <div className="flex flex-wrap gap-1.5">
-                  {vibeButtons.map(vibe => (
-                    <button key={vibe} onClick={() => handleVibeSelect(vibe)} disabled={vibeLoading}
-                      className="px-3 py-1.5 rounded-full text-[11px] font-medium transition-colors disabled:opacity-50"
-                      style={selectedVibe === vibe ? { backgroundColor: "#EEEDFE", border: "1.5px solid #534AB7", color: "#534AB7" } : { backgroundColor: "white", border: "1.5px solid #d1d5db", color: "#6b7280" }}>
-                      {vibe}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Action buttons (#3) — ALL live here */}
-            <div className="mb-4 flex flex-col gap-2">
-              {isCurated && (
-                <>
-                  <button onClick={() => currentDay && lockDay(currentDay.id)} className="w-full py-2.5 rounded-lg text-white text-[13px] font-medium" style={{ backgroundColor: "#1D9E75" }}>Looks good — lock it in</button>
-                  <button onClick={() => currentDay && vibeThisDay(currentDay.id)} className="w-full py-2.5 rounded-lg text-[13px] font-medium" style={{ border: "1.5px solid #534AB7", color: "#534AB7" }}>Vibe this day</button>
-                </>
-              )}
-              {isCollab && <button onClick={() => currentDay && lockDay(currentDay.id)} className="w-full py-2.5 rounded-lg text-white text-[13px] font-medium" style={{ backgroundColor: "#1D9E75" }}>Love it — lock this day in</button>}
-              {isLocked && (
-                <>
-                  <div className="text-center py-1 text-[12px] text-gray-400 flex items-center justify-center gap-1.5">
-                    <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Day locked
+          <div className="flex flex-col">
+            {allOptionStops.map(({ key, stop, sourceIdx }) => {
+              const checked = cherryPicks.has(key);
+              return (
+                <div
+                  key={key}
+                  onClick={() => toggleCherryPick(key)}
+                  className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 cursor-pointer hover:bg-gray-50"
+                  style={{ opacity: checked ? 1 : 0.35, borderBottomWidth: 0.5 }}
+                >
+                  <div
+                    className="flex-shrink-0 flex items-center justify-center"
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 4,
+                      backgroundColor: checked ? "#1D9E75" : "transparent",
+                      border: checked ? "1px solid #1D9E75" : "1.5px solid #d1d5db",
+                    }}
+                  >
+                    {checked && (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={4}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
                   </div>
-                  <button onClick={() => currentDay && unlockDay(currentDay.id)} className="w-full py-2 rounded-lg text-[12px] font-medium" style={{ border: "1.5px solid #534AB7", color: "#534AB7" }}>Vibe this day</button>
-                </>
-              )}
-            </div>
-
-            {/* Chat */}
-            <div className="flex-1 flex flex-col min-h-0">
-              {chatMessages.length > 0 && (
-                <div className="flex-1 overflow-y-auto mb-2 min-h-0">
-                  {chatMessages.map((msg, idx) => (
-                    <div key={idx} className={`mb-2 flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                      {msg.role === "user"
-                        ? <div className="max-w-[90%] rounded-lg px-2.5 py-1.5 bg-emerald-500 text-white text-[12px] leading-relaxed whitespace-pre-wrap">{msg.content}</div>
-                        : <div className="max-w-[90%] rounded-lg px-2.5 py-1.5 bg-gray-100 text-gray-800 text-[12px] leading-relaxed chat-markdown"><ReactMarkdown>{msg.content}</ReactMarkdown></div>}
-                    </div>
-                  ))}
-                  {isThinking && (
-                    <div className="mb-2 flex justify-start"><div className="bg-gray-100 rounded-lg px-2.5 py-1.5 text-[11px] text-gray-500 flex items-center gap-1.5">
-                      <span className="w-1 h-1 rounded-full bg-gray-400 animate-bounce" /><span className="w-1 h-1 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "150ms" }} /><span className="w-1 h-1 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "300ms" }} />
-                    </div></div>
-                  )}
-                  <div ref={chatEndRef} />
-                </div>
-              )}
-              <div className="flex gap-1.5 flex-shrink-0">
-                <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Ask Claude..." className="flex-1 text-[12px] px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200" onKeyDown={e => e.key === "Enter" && handleChatSend()} disabled={isThinking} />
-                <button onClick={() => handleChatSend()} disabled={isThinking || !chatInput.trim()} className="px-3 py-2 rounded-lg bg-emerald-500 text-white text-[11px] font-medium disabled:opacity-50">Send</button>
-              </div>
-            </div>
-          </div>
-
-          {/* CENTER — Picks (#4, #5) */}
-          <div className={`flex flex-col overflow-hidden transition-all duration-300 ${isCollab ? "w-[33.3%]" : "w-[50%]"}`} style={{ borderLeft: "1.5px solid #1D9E75", borderRight: isCollab ? "1.5px solid #1D9E75" : "none" }}>
-            <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100 flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[13px] font-medium text-gray-700">{selectedVibe || (isCurated || isLocked ? "Claude\u2019s picks" : "Picks")}</span>
-                {vibeLoading && <span className="w-3 h-3 border-2 border-gray-200 border-t-emerald-500 rounded-full animate-spin" />}
-              </div>
-              <button onClick={handleRefresh} disabled={vibeLoading} className="text-[11px] text-gray-500 hover:text-gray-700 px-2 py-1 rounded-md hover:bg-gray-100 transition-colors disabled:opacity-50">↻ Refresh</button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 py-3">
-              <SortableContext items={picksStops.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                {groupedPicks.map(group => (
-                  <div key={group.period} className="mb-4">
-                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">{group.period}</p>
-                    <div className="flex flex-col gap-2">
-                      {group.stops.map(stop => (
-                        <div key={stop.id} ref={el => { if (el) stopCardRefs.current.set(stop.id, el); }}>
-                          <SortableStopCard stop={stop} isHighlighted={highlightedStopId === stop.id} onClick={() => handleCardClick(stop.id)} showAiNote={isCurated || isLocked} dayColor={dayColors[activeDay] || "#1D9E75"} />
-                        </div>
-                      ))}
+                  <span
+                    className="flex-shrink-0 px-1.5 rounded text-[9px] font-bold"
+                    style={{
+                      backgroundColor: SOURCE_BG[sourceIdx % SOURCE_BG.length],
+                      color: SOURCE_BORDER[sourceIdx % SOURCE_BORDER.length],
+                    }}
+                  >
+                    {SOURCE_LABELS[sourceIdx % SOURCE_LABELS.length]}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12px] font-medium text-gray-900 truncate">{stop.name}</div>
+                    <div className="text-[10px] text-gray-500 truncate">
+                      {stop.stop_type || "visit"} · {stop.duration_minutes || 60} min
                     </div>
                   </div>
-                ))}
-              </SortableContext>
-              {picksStops.length === 0 && <div className="text-center py-10 text-gray-400 text-[13px]">{vibeLoading ? "Reshuffling..." : "Select a vibe to see picks"}</div>}
-            </div>
+                </div>
+              );
+            })}
           </div>
+          <div className="px-3 py-3 mt-auto border-t border-gray-100 flex flex-col gap-2 flex-shrink-0" style={{ borderTopWidth: 0.5 }}>
+            <button
+              onClick={lockInPicks}
+              disabled={cherryPicks.size === 0}
+              className="w-full py-2 rounded-lg text-white text-[12px] font-medium disabled:opacity-50"
+              style={{ backgroundColor: "#1D9E75" }}
+            >
+              Lock in picks ({cherryPicks.size})
+            </button>
+            <button
+              onClick={() => setCherryPicks(new Set())}
+              className="w-full text-[10px] text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Clear all
+            </button>
+          </div>
+        </>
+      );
+    }
 
-          {/* RIGHT — Bench (#5, #6, #7, #8) */}
-          {isCollab && (
-            <div className="w-[33.3%] flex flex-col overflow-hidden transition-all duration-300" style={{ borderLeft: "1px dashed #d1d5db" }}>
-              <div className="px-4 py-3 flex items-center justify-between border-b border-gray-100 flex-shrink-0">
-                <span className="text-[13px] font-medium text-gray-500">On the bench</span>
-                <button onClick={fetchBenchAlternatives} disabled={benchLoading} className="text-[11px] text-gray-500 hover:text-gray-700 px-2 py-1 rounded-md hover:bg-gray-100 transition-colors disabled:opacity-50">↻ Refresh</button>
-              </div>
-              <div className="flex-1 overflow-y-auto px-4 py-3">
-                {benchLoading ? <BenchSkeleton /> : (
-                  <SortableContext items={[...benchStops.map(s => s.id), "bench-droppable"]} strategy={verticalListSortingStrategy}>
-                    {benchStops.map(stop => (
-                      <div key={stop.id} className="mb-2">
-                        <SortableStopCard stop={stop} isBench isHighlighted={highlightedStopId === stop.id} onClick={() => handleCardClick(stop.id)} dayColor={dayColors[activeDay] || "#1D9E75"} />
-                      </div>
-                    ))}
-                    {benchStops.length === 0 && <div className="text-center py-10 text-gray-400 text-[12px]">Claude is thinking of options...</div>}
-                  </SortableContext>
-                )}
-              </div>
+    return (
+      <>
+        <div
+          className="sticky top-0 z-10 bg-white px-3 py-3 border-b border-gray-100 flex-shrink-0"
+          style={{ borderBottomWidth: 0.5 }}
+        >
+          <div className="flex items-center gap-2 mb-1.5">
+            <div className="text-[12px] font-semibold text-gray-900 leading-tight flex-1 min-w-0 truncate">
+              Day {currentDay.day_number}{currentDay.title ? ` — ${currentDay.title}` : ""}
+            </div>
+            {isCurated && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0" style={{ backgroundColor: "#E1F5EE", color: "#0F6E56" }}>
+                Curated
+              </span>
+            )}
+            {isCollab && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0" style={{ backgroundColor: "#EEEDFE", color: "#534AB7" }}>
+                Collab
+              </span>
+            )}
+            {isLocked && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 inline-flex items-center gap-1" style={{ backgroundColor: "#E1F5EE", color: "#0F6E56" }}>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                Locked
+              </span>
+            )}
+          </div>
+          {currentDay.narrative && (
+            <div className="text-[11px] text-gray-500 leading-[1.5] line-clamp-3">{currentDay.narrative}</div>
+          )}
+          {currentDay.reasoning && (
+            <div className="text-[10px] text-gray-400 italic leading-[1.5] mt-1.5 line-clamp-3">
+              {currentDay.reasoning}
             </div>
           )}
         </div>
-        <DragOverlay>{draggedStop ? <DragOverlayCard stop={draggedStop} dayColor={dayColors[activeDay] || "#1D9E75"} /> : null}</DragOverlay>
-      </DndContext>
+
+        <div className="flex flex-col">
+          {picksStops.length === 0 ? (
+            <div className="px-3 py-10 text-center text-gray-400 text-[11px]">No stops yet</div>
+          ) : (
+            <SortableContext items={picksStops.map(s => s.id)} strategy={verticalListSortingStrategy}>
+              {picksStops.map(stop => (
+                <SortableStopRow
+                  key={stop.id}
+                  stop={stop}
+                  dayColor={dayColor}
+                  isHighlighted={highlightedStopId === stop.id}
+                  onClick={() => setHighlightedStopId(prev => prev === stop.id ? null : stop.id)}
+                />
+              ))}
+            </SortableContext>
+          )}
+        </div>
+
+        <div className="px-3 py-3 mt-auto border-t border-gray-100 flex flex-col gap-2 flex-shrink-0" style={{ borderTopWidth: 0.5 }}>
+          {(isCurated || isCollab) && (
+            <>
+              <button
+                onClick={() => currentDay && lockDay(currentDay.id)}
+                className="w-full py-2 rounded-lg text-white text-[12px] font-medium"
+                style={{ backgroundColor: "#1D9E75" }}
+              >
+                {isCurated ? "Looks good — lock this day in" : "Love it — lock this day in"}
+              </button>
+              <button
+                onClick={handleShowOptions}
+                disabled={isThinking}
+                className="w-full py-2 rounded-lg text-[12px] font-medium border border-dashed transition-colors hover:bg-purple-50 disabled:opacity-50"
+                style={{ borderColor: "#A89BF1", color: "#534AB7" }}
+              >
+                Show me other options
+              </button>
+            </>
+          )}
+          {isLocked && (
+            <button
+              onClick={() => currentDay && unlockDay(currentDay.id)}
+              className="w-full py-2 rounded-lg text-[12px] font-medium border transition-colors hover:bg-purple-50"
+              style={{ borderColor: "#534AB7", color: "#534AB7" }}
+            >
+              Vibe this day
+            </button>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  const renderChat = () => (
+    <>
+      <div className="flex-1 overflow-y-auto px-4 py-4 min-h-0">
+        {chatMessages.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-6 px-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-5 h-5 rounded-full bg-purple-100 flex items-center justify-center">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#534AB7" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="14" rx="3" />
+                  <path d="M7 10h10" strokeLinecap="round" />
+                </svg>
+              </div>
+              <span className="text-[12px] font-medium text-gray-600">Vibe planning with Claude</span>
+            </div>
+            <p className="text-[11px] text-gray-500 text-center max-w-[380px]">
+              Pick a day and shape it — try a vibe pill, ask for other options, or chat directly.
+            </p>
+          </div>
+        )}
+        {chatMessages.map((msg, idx) => {
+          if (msg.role === "assistant" && msg.content.startsWith(LOCKED_PREFIX)) {
+            const label = msg.content.slice(LOCKED_PREFIX.length);
+            return (
+              <div key={idx} className="mb-3 flex justify-center">
+                <div
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium"
+                  style={{ backgroundColor: "#f0faf5", color: "#0F6E56" }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#1D9E75" }} />
+                  {label} locked
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div key={idx} className={`mb-4 flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              {msg.role === "user" ? (
+                <div className="max-w-[80%] rounded-2xl px-3.5 py-2 text-[13px] leading-[1.55] whitespace-pre-wrap" style={{ backgroundColor: "#F5F4F0", color: "#1f2937" }}>
+                  {msg.content}
+                </div>
+              ) : (
+                <div className="max-w-[88%]">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "#534AB7" }}>Claude</div>
+                  <div className="text-[13px] text-gray-800 leading-[1.6] chat-markdown">
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {isThinking && (
+          <div className="mb-4 flex justify-start">
+            <div className="max-w-[88%]">
+              <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "#534AB7" }}>Claude</div>
+              <div className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "#534AB7", animationDelay: "0ms" }} />
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "#534AB7", animationDelay: "150ms" }} />
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "#534AB7", animationDelay: "300ms" }} />
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={chatEndRef} />
+      </div>
+
+      {isCollab && vibeButtons.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 px-4 pb-2 flex-shrink-0">
+          {vibeButtons.map(vibe => {
+            const isSelected = selectedVibe === vibe;
+            return (
+              <button
+                key={vibe}
+                onClick={() => handleVibePillClick(vibe)}
+                disabled={isThinking}
+                className="transition-colors disabled:opacity-50"
+                style={{
+                  borderRadius: 16,
+                  padding: "5px 12px",
+                  fontSize: 11,
+                  backgroundColor: isSelected ? "#534AB7" : "transparent",
+                  color: isSelected ? "white" : "#6b7280",
+                  border: isSelected ? "1px solid #534AB7" : "1px solid #d1d5db",
+                }}
+              >
+                {vibe}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      <div
+        className="flex gap-2 px-4 py-2.5 flex-shrink-0 border-t border-gray-100"
+        style={{ borderTopWidth: 0.5 }}
+      >
+        <input
+          type="text"
+          value={chatInput}
+          onChange={e => setChatInput(e.target.value)}
+          placeholder="Ask Claude about this day..."
+          className="flex-1 text-[13px] px-4 py-2.5 border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-purple-200 focus:border-purple-300 transition-colors"
+          style={{ borderRadius: 20 }}
+          onKeyDown={e => e.key === "Enter" && handleChatSend()}
+          disabled={isThinking}
+        />
+        <button
+          onClick={() => handleChatSend()}
+          disabled={isThinking || !chatInput.trim()}
+          className="px-4 py-2.5 text-[12px] font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ backgroundColor: "#534AB7", borderRadius: 20 }}
+        >
+          {isThinking ? "..." : "Send"}
+        </button>
+      </div>
+    </>
+  );
+
+  const renderRightPanel = () => (
+    <div className="flex-1 relative min-h-0">
+      <VibeMap
+        stops={previewMapStops as Stop[]}
+        dayColor={dayColor}
+        highlightedStopId={highlightedStopId}
+        onPinClick={(id: string) => setHighlightedStopId(id)}
+      />
+      {currentDay && (
+        <div
+          className="absolute top-2 left-2 px-2.5 py-1 rounded-md shadow-sm pointer-events-none"
+          style={{
+            backgroundColor: "rgba(255,255,255,0.95)",
+            zIndex: 500,
+            border: `1px solid ${dayColor}`,
+          }}
+        >
+          <div className="text-[10px] font-semibold" style={{ color: dayColor }}>
+            Day {currentDay.day_number}{currentDay.title ? ` · ${currentDay.title}` : ""}
+            {optionsData && !cherryPickMode && ` · Option ${SOURCE_LABELS[selectedOption % SOURCE_LABELS.length]}`}
+            {cherryPickMode && ` · Custom (${cherryPicks.size})`}
+          </div>
+        </div>
+      )}
     </div>
+  );
+
+  const renderChatOverlay = () => {
+    if (!optionsData) return null;
+    return (
+      <div
+        className="flex-shrink-0 border-b border-gray-100 bg-white"
+        style={{ borderBottomWidth: 0.5 }}
+      >
+        <div className="flex gap-2 px-4 py-2.5" style={{ overflow: "hidden" }}>
+          {optionsData.options.map((opt, optIdx) => {
+            const isSelected = selectedOption === optIdx && !cherryPickMode;
+            return (
+              <div
+                key={optIdx}
+                onClick={() => { setSelectedOption(optIdx); setCherryPickMode(false); }}
+                className="flex flex-col cursor-pointer transition-all"
+                style={{
+                  flex: "1 1 0",
+                  minWidth: 0,
+                  border: isSelected ? "2px solid #534AB7" : "0.5px solid #e5e7eb",
+                  borderRadius: 10,
+                  backgroundColor: isSelected ? "#FAFAFE" : "white",
+                  padding: 10,
+                  maxHeight: 200,
+                  overflow: "hidden",
+                }}
+              >
+                <div className="flex items-start justify-between gap-1 mb-1">
+                  <div className="text-[12px] font-medium text-gray-900 leading-tight flex-1 min-w-0 truncate">
+                    {opt.label}
+                  </div>
+                  <span
+                    className="flex-shrink-0 px-1.5 rounded text-[9px] font-bold"
+                    style={{
+                      backgroundColor: SOURCE_BG[optIdx % SOURCE_BG.length],
+                      color: SOURCE_BORDER[optIdx % SOURCE_BORDER.length],
+                    }}
+                  >
+                    {SOURCE_LABELS[optIdx % SOURCE_LABELS.length]}
+                  </span>
+                </div>
+                <div
+                  className="text-[9px] mb-1.5 px-1.5 py-0.5 rounded inline-block self-start"
+                  style={{ backgroundColor: "#EEEDFE", color: "#534AB7" }}
+                >
+                  {opt.summary}
+                </div>
+                <div className="flex-1 overflow-y-auto min-h-0 mb-1.5">
+                  {opt.stops.slice(0, 6).map((s, i) => (
+                    <div key={i} className="flex items-center gap-1.5 py-0.5">
+                      <span className="w-1 h-1 rounded-full flex-shrink-0" style={{ backgroundColor: dayColor }} />
+                      <span className="text-[10px] text-gray-700 flex-1 min-w-0 truncate">{s.name}</span>
+                      <span className="text-[8px] text-gray-400 flex-shrink-0">{s.stop_type || "visit"}</span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); goWithOption(optIdx); }}
+                  className="w-full py-1 rounded text-white text-[10px] font-medium"
+                  style={{ backgroundColor: "#1D9E75" }}
+                >
+                  Go with this
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="text-center pb-2">
+          <button
+            onClick={() => {
+              setCherryPickMode(true);
+              setCherryPicks(new Set());
+            }}
+            className="text-[11px] text-gray-500 hover:text-purple-600 underline"
+          >
+            Or pick stops from each option
+          </button>
+          <button
+            onClick={dismissOptions}
+            className="text-[11px] text-gray-400 hover:text-gray-600 ml-3"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center bg-white">
+      <div className="text-center">
+        <div className="w-10 h-10 rounded-full border-[3px] border-gray-200 border-t-purple-500 animate-spin mx-auto mb-4" />
+        <p className="text-gray-400 text-sm">Loading vibe planning...</p>
+      </div>
+    </div>
+  );
+  if (!trip || !currentMember) return null;
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <TripLayout
+        trip={trip}
+        days={days}
+        activeDay={activeDay}
+        dayColors={dayColors}
+        stops={stops}
+        onSelectDay={(idx) => {
+          setActiveDay(idx);
+          setSelectedVibe(null);
+          setHighlightedStopId(null);
+          dismissOptions();
+        }}
+        trips={allTrips}
+        onNewTrip={() => router.push("/")}
+        onSwitchTrip={(id) => router.push(`/trip/${id}`)}
+        renderLeftPanel={renderLeftPanel}
+        renderChat={renderChat}
+        renderRightPanel={renderRightPanel}
+        renderChatOverlay={renderChatOverlay}
+      />
+      <DragOverlay>{draggedStop ? <DragOverlayRow stop={draggedStop as VibeStop} dayColor={dayColor} /> : null}</DragOverlay>
+    </DndContext>
   );
 }
