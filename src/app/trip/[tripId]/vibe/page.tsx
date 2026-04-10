@@ -159,11 +159,13 @@ export default function VibePlanningPage() {
   const [pulsingStopId, setPulsingStopId] = useState<string | null>(null);
   const [allTrips, setAllTrips] = useState<Trip[]>([]);
 
-  // Options overlay
-  const [optionsData, setOptionsData] = useState<OptionsPayload | null>(null);
+  // Options overlay — keyed by day_id so each day keeps its own options
+  // Persisted to localStorage so options survive refresh and day switches
+  const [optionsByDay, setOptionsByDay] = useState<Record<string, OptionsPayload>>({});
   const [selectedOption, setSelectedOption] = useState<number>(0);
   const [cherryPickMode, setCherryPickMode] = useState(false);
   const [cherryPicks, setCherryPicks] = useState<Set<string>>(new Set());
+  const optionsStorageKey = `vibe_options_${tripId}`;
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -219,6 +221,31 @@ export default function VibePlanningPage() {
   const isCollab = currentDay?.vibe_status === "collab";
   const isLocked = currentDay?.vibe_status === "locked";
   const dayColor = dayColors[activeDay] || "#1D9E75";
+  const optionsData: OptionsPayload | null = currentDay ? optionsByDay[currentDay.id] || null : null;
+
+  // Load persisted options on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(optionsStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") setOptionsByDay(parsed);
+      }
+    } catch { /* ignore */ }
+  }, [optionsStorageKey]);
+
+  // Persist options whenever they change
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (Object.keys(optionsByDay).length === 0) {
+        window.localStorage.removeItem(optionsStorageKey);
+      } else {
+        window.localStorage.setItem(optionsStorageKey, JSON.stringify(optionsByDay));
+      }
+    } catch { /* ignore */ }
+  }, [optionsByDay, optionsStorageKey]);
 
   const vibeButtons = useMemo(() => {
     if (!trip) return [];
@@ -304,7 +331,14 @@ export default function VibePlanningPage() {
   }
 
   function dismissOptions() {
-    setOptionsData(null);
+    if (currentDay) {
+      setOptionsByDay(prev => {
+        if (!(currentDay.id in prev)) return prev;
+        const next = { ...prev };
+        delete next[currentDay.id];
+        return next;
+      });
+    }
     setSelectedOption(0);
     setCherryPickMode(false);
     setCherryPicks(new Set());
@@ -386,11 +420,12 @@ export default function VibePlanningPage() {
     if (result.toolCalls.length > 0) await reloadStops();
 
     const optionsMatch = result.text.match(/```options\s*([\s\S]*?)```/);
-    if (optionsMatch) {
+    if (optionsMatch && currentDay) {
       try {
         const parsed = JSON.parse(optionsMatch[1]);
         if (parsed && Array.isArray(parsed.options) && parsed.options.length > 0) {
-          setOptionsData(parsed as OptionsPayload);
+          const dayId = currentDay.id;
+          setOptionsByDay(prev => ({ ...prev, [dayId]: parsed as OptionsPayload }));
           setSelectedOption(0);
           setCherryPickMode(false);
           setCherryPicks(new Set());
@@ -921,7 +956,9 @@ export default function VibePlanningPage() {
           setSelectedVibe(null);
           setHighlightedStopId(null);
           setPulsingStopId(null);
-          dismissOptions();
+          setSelectedOption(0);
+          setCherryPickMode(false);
+          setCherryPicks(new Set());
         }}
         trips={allTrips}
         onNewTrip={() => router.push("/")}
