@@ -633,16 +633,36 @@ export default function VibePlanningPage() {
       );
     }
 
+    const optionsActive = optionsData !== null;
+    const curatedSelected = optionsActive && selectedOption === -1 && !cherryPickMode;
     return (
       <>
         <div
           className="sticky top-0 z-10 bg-white px-3 py-3 border-b border-gray-100 flex-shrink-0"
-          style={{ borderBottomWidth: 0.5 }}
+          style={{
+            borderBottomWidth: 0.5,
+            borderLeft: curatedSelected ? `3px solid ${dayColor}` : "3px solid transparent",
+            backgroundColor: curatedSelected ? "#FAFFFD" : "white",
+          }}
         >
           <div className="flex items-center gap-2 mb-1.5">
-            <div className="text-[12px] font-semibold text-gray-900 leading-tight flex-1 min-w-0 truncate">
+            <button
+              onClick={() => {
+                if (!optionsActive) return;
+                setSelectedOption(-1);
+                setCherryPickMode(false);
+              }}
+              title={optionsActive ? "Show curated stops on the map" : undefined}
+              className="text-[12px] font-semibold text-gray-900 leading-tight flex-1 min-w-0 truncate text-left"
+              style={{
+                cursor: optionsActive ? "pointer" : "default",
+                color: curatedSelected ? dayColor : undefined,
+                textDecoration: optionsActive && !curatedSelected ? "underline dotted #cbd5e1" : "none",
+                textUnderlineOffset: 3,
+              }}
+            >
               Day {currentDay.day_number}{currentDay.title ? ` — ${currentDay.title}` : ""}
-            </div>
+            </button>
             {isCurated && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0" style={{ backgroundColor: "#E1F5EE", color: "#0F6E56" }}>
                 Curated
@@ -900,72 +920,12 @@ export default function VibePlanningPage() {
 
   const renderChatOverlay = () => {
     if (!optionsData) return null;
-    const curatedSelected = selectedOption === -1 && !cherryPickMode;
     return (
       <div
         className="flex-shrink-0 border-b border-gray-100 bg-white"
         style={{ borderBottomWidth: 0.5 }}
       >
         <div className="flex gap-3 px-4 py-3 items-stretch">
-          {/* Curated card — current day stops as a first-class source */}
-          <div
-            onClick={() => { setSelectedOption(-1); setCherryPickMode(false); }}
-            className="flex flex-col cursor-pointer transition-all"
-            style={{
-              flex: "1 1 0",
-              minWidth: 0,
-              border: curatedSelected ? `2px solid ${dayColor}` : "0.5px solid #e5e7eb",
-              borderRadius: 12,
-              backgroundColor: curatedSelected ? "#FAFFFD" : "white",
-              padding: 14,
-            }}
-          >
-            <div className="flex items-start justify-between gap-2 mb-1.5">
-              <div className="text-[14px] font-semibold text-gray-900 leading-tight flex-1 min-w-0">
-                {currentDay?.title ? currentDay.title : `Day ${currentDay?.day_number || ""}`}
-              </div>
-              <span
-                className="flex-shrink-0 px-1.5 py-0.5 rounded text-[11px] font-bold"
-                style={{ backgroundColor: "#E1F5EE", color: "#0F6E56" }}
-              >
-                Now
-              </span>
-            </div>
-            <div
-              className="text-[11px] mb-2.5 px-2 py-0.5 rounded inline-block self-start leading-snug"
-              style={{ backgroundColor: "#E1F5EE", color: "#0F6E56" }}
-            >
-              Current plan
-            </div>
-            <div className="flex flex-col gap-1 mb-3 flex-1">
-              {picksStops.length === 0 ? (
-                <div className="text-[12px] text-gray-400 italic">No stops yet</div>
-              ) : (
-                picksStops.map(s => {
-                  const isHL = highlightedStopId === s.id;
-                  return (
-                    <div
-                      key={s.id}
-                      onClick={(e) => { e.stopPropagation(); highlightStop(s.id); }}
-                      className="flex items-center gap-2 py-1 px-1.5 rounded cursor-pointer hover:bg-gray-50"
-                      style={{ backgroundColor: isHL ? "#f3f4f6" : "transparent" }}
-                    >
-                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dayColor }} />
-                      <span className="text-[13px] text-gray-800 flex-1 min-w-0" style={{ fontWeight: isHL ? 600 : 400, lineHeight: 1.4 }}>{s.name}</span>
-                      <span className="text-[11px] text-gray-400 flex-shrink-0">{s.stop_type || "visit"}</span>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-            <button
-              onClick={(e) => { e.stopPropagation(); if (currentDay) lockDay(currentDay.id); dismissOptions(); }}
-              className="w-full py-2 rounded-lg text-white text-[13px] font-medium"
-              style={{ backgroundColor: "#1D9E75" }}
-            >
-              Lock this in
-            </button>
-          </div>
           {optionsData.options.map((opt, optIdx) => {
             const isSelected = selectedOption === optIdx && !cherryPickMode;
             return (
