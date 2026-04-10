@@ -142,7 +142,9 @@ export default function TripLayout({
             className="flex-shrink-0 flex flex-col overflow-y-auto bg-white"
             style={{ width: 280, borderRight: `0.5px solid ${BORDER}` }}
           >
-            {renderLeftPanel()}
+            <div className="flex flex-col flex-1" style={{ paddingLeft: 12, paddingRight: 12 }}>
+              {renderLeftPanel()}
+            </div>
           </div>
 
           {/* Center — chat */}
@@ -161,7 +163,14 @@ export default function TripLayout({
             className="flex-shrink-0 flex flex-col bg-white"
             style={{ width: 320, borderLeft: `0.5px solid ${BORDER}` }}
           >
-            {renderRightPanel()}
+            <div className="flex flex-col flex-1 min-h-0" style={{ padding: 12 }}>
+              <div
+                className="flex flex-col flex-1 min-h-0 overflow-hidden"
+                style={{ borderRadius: 8, border: `0.5px solid ${BORDER}` }}
+              >
+                {renderRightPanel()}
+              </div>
+            </div>
           </div>
         </div>
 
