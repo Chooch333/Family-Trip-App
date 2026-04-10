@@ -803,7 +803,7 @@ export default function VibePlanningPage() {
                     {SOURCE_LABELS[sourceIdx % SOURCE_LABELS.length]}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[18px] font-medium text-gray-900 truncate">{stop.name}</div>
+                    <div className="text-[18px] font-medium text-gray-900 truncate" title={stop.name}>{stop.name}</div>
                     <div className="text-[15px] text-gray-500 truncate">
                       {stop.stop_type || "visit"} · {stop.duration_minutes || 60} min
                     </div>
@@ -914,22 +914,22 @@ export default function VibePlanningPage() {
           </SortableContext>
         </DroppableZone>
 
-          {(isCurated || isCollab) && (
+          {!isLocked && currentDay && (
             <div className="flex gap-1.5 px-3 py-2.5 flex-shrink-0">
-              <button
-                onClick={() => currentDay && lockDay(currentDay.id)}
-                className="flex-1 py-1.5 rounded-md text-white text-[11px] font-medium"
-                style={{ backgroundColor: "#1D9E75" }}
-              >
-                {isCurated ? "Looks good" : "Love it"}
-              </button>
               <button
                 onClick={handleShowOptions}
                 disabled={isThinking}
                 className="flex-1 py-1.5 rounded-md text-[11px] font-medium border border-dashed transition-colors hover:bg-purple-50 disabled:opacity-50"
                 style={{ borderColor: "#A89BF1", color: "#534AB7" }}
               >
-                Other options
+                Vibe this day
+              </button>
+              <button
+                onClick={() => currentDay && lockDay(currentDay.id)}
+                className="flex-1 py-1.5 rounded-md text-white text-[11px] font-medium"
+                style={{ backgroundColor: "#1D9E75" }}
+              >
+                Lock it in
               </button>
             </div>
           )}
