@@ -150,14 +150,14 @@ function SortableStopRow(props: StopRowProps) {
         style={{ backgroundColor: props.isHighlighted ? "#f9fafb" : "transparent" }}
       >
         <div className="flex-1 min-w-0">
-          <div className="text-[12px] font-medium text-gray-900 truncate leading-tight">{props.name}</div>
-          <div className="text-[10px] text-gray-500 mt-0.5 truncate">
+          <div className="text-[18px] font-medium text-gray-900 truncate leading-tight">{props.name}</div>
+          <div className="text-[15px] text-gray-500 mt-0.5 truncate">
             {props.stopType || "visit"} · {props.durationMinutes || 60} min
             {props.isAdded && <span className="ml-1.5 text-emerald-600 font-semibold">· Added</span>}
           </div>
         </div>
         {props.showTime && props.startTime && (
-          <div className="text-[10px] text-gray-400 whitespace-nowrap pt-0.5">{formatTime12(props.startTime)}</div>
+          <div className="text-[15px] text-gray-400 whitespace-nowrap pt-0.5">{formatTime12(props.startTime)}</div>
         )}
       </div>
     </div>
@@ -198,8 +198,8 @@ function StopRowOverlay({
       </div>
       <div className="flex-shrink-0" style={{ width: 4, backgroundColor: dayColor }} />
       <div className={`flex-1 min-w-0 px-3 ${padClass}`}>
-        <div className="text-[12px] font-medium text-gray-900 truncate leading-tight">{name}</div>
-        <div className="text-[10px] text-gray-500 mt-0.5 truncate">{stopType || "visit"} · {durationMinutes || 60} min</div>
+        <div className="text-[18px] font-medium text-gray-900 truncate leading-tight">{name}</div>
+        <div className="text-[15px] text-gray-500 mt-0.5 truncate">{stopType || "visit"} · {durationMinutes || 60} min</div>
       </div>
     </div>
   );
@@ -803,8 +803,8 @@ export default function VibePlanningPage() {
                     {SOURCE_LABELS[sourceIdx % SOURCE_LABELS.length]}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-medium text-gray-900 truncate">{stop.name}</div>
-                    <div className="text-[10px] text-gray-500 truncate">
+                    <div className="text-[18px] font-medium text-gray-900 truncate">{stop.name}</div>
+                    <div className="text-[15px] text-gray-500 truncate">
                       {stop.stop_type || "visit"} · {stop.duration_minutes || 60} min
                     </div>
                   </div>

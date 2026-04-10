@@ -147,13 +147,13 @@ function SortableStopRow({
       <div className="flex-shrink-0" style={{ width: 4, backgroundColor: dayColor }} />
       <div className="flex-1 min-w-0 px-3 py-2.5 flex items-start gap-2">
         <div className="flex-1 min-w-0">
-          <div className="text-[12px] font-medium text-gray-900 truncate leading-tight">{stop.name}</div>
-          <div className="text-[10px] text-gray-500 mt-0.5 truncate">
+          <div className="text-[18px] font-medium text-gray-900 truncate leading-tight">{stop.name}</div>
+          <div className="text-[15px] text-gray-500 mt-0.5 truncate">
             {stop.stop_type} · {stop.duration_minutes} min
           </div>
         </div>
         {stop.start_time && (
-          <div className="text-[10px] text-gray-400 whitespace-nowrap pt-0.5">{formatTime12(stop.start_time)}</div>
+          <div className="text-[15px] text-gray-400 whitespace-nowrap pt-0.5">{formatTime12(stop.start_time)}</div>
         )}
       </div>
     </div>
@@ -767,9 +767,9 @@ Rules:
                       className="flex items-center gap-2 px-3 py-2"
                     >
                       <div className="flex-1 h-px" style={{ backgroundColor: dayColor, opacity: 0.25 }} />
-                      <span className="text-[11px]">{icon}</span>
-                      <span className="text-[10px] font-medium text-gray-600 truncate">{stop.name}</span>
-                      <span className="text-[10px] text-gray-400 flex-shrink-0">· {dur}</span>
+                      <span className="text-[17px]">{icon}</span>
+                      <span className="text-[15px] font-medium text-gray-600 truncate">{stop.name}</span>
+                      <span className="text-[15px] text-gray-400 flex-shrink-0">· {dur}</span>
                       <div className="flex-1 h-px" style={{ backgroundColor: dayColor, opacity: 0.25 }} />
                     </div>
                   );
