@@ -24,6 +24,9 @@ interface TripLayoutProps {
   renderChatOverlay?: () => ReactNode;
 }
 
+const RAIL_BG = "#f7f7f4";
+const BORDER = "#e5e7eb";
+
 export default function TripLayout({
   trip,
   days,
@@ -40,6 +43,15 @@ export default function TripLayout({
   renderChatOverlay,
 }: TripLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const activeDayColor = dayColors[activeDay] || "#1D9E75";
+  const railTrips = (trips || []).slice(0, 4);
+
+  function tripInitial(name: string): string {
+    const trimmed = name.trim();
+    if (!trimmed) return "?";
+    return trimmed.charAt(0).toUpperCase();
+  }
 
   return (
     <div className="h-screen flex flex-col bg-white overflow-hidden relative">
@@ -71,8 +83,88 @@ export default function TripLayout({
         </div>
       </div>
 
-      {/* Three-panel body */}
+      {/* Body row */}
       <div className="flex flex-1 min-h-0 relative">
+        {/* Sidebar collapsed rail — always visible when overlay closed */}
+        <div
+          className="flex-shrink-0 flex flex-col items-center py-2 gap-2"
+          style={{
+            width: 48,
+            backgroundColor: RAIL_BG,
+            borderRight: `0.5px solid ${BORDER}`,
+          }}
+        >
+          <button
+            onClick={() => setSidebarOpen((o) => !o)}
+            aria-label="Open sidebar"
+            className="w-9 h-9 rounded-md flex items-center justify-center hover:bg-gray-200/60 transition-colors flex-shrink-0"
+          >
+            <svg width="18" height="13" viewBox="0 0 20 14" fill="none">
+              <line x1="0" y1="2" x2="20" y2="2" stroke="#444" strokeWidth="1.6" strokeLinecap="round" />
+              <line x1="0" y1="7" x2="20" y2="7" stroke="#444" strokeWidth="1.6" strokeLinecap="round" />
+              <line x1="0" y1="12" x2="20" y2="12" stroke="#444" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+          </button>
+          <div className="w-6 h-px bg-gray-200 my-1 flex-shrink-0" />
+          <div className="flex flex-col gap-2 items-center flex-1 min-h-0 overflow-hidden">
+            {railTrips.map((t) => {
+              const isCurrent = t.id === trip.id;
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => {
+                    if (!isCurrent && onSwitchTrip) onSwitchTrip(t.id);
+                  }}
+                  title={t.name}
+                  className="relative flex-shrink-0 flex items-center justify-center text-white text-[12px] font-semibold transition-transform hover:scale-105"
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: "50%",
+                    backgroundColor: isCurrent ? activeDayColor : "#9ca3af",
+                    boxShadow: isCurrent ? "0 0 0 2px #fff, 0 0 0 3.5px " + activeDayColor : undefined,
+                  }}
+                >
+                  {tripInitial(t.name)}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Padded panel container */}
+        <div
+          className="flex flex-1 min-w-0 min-h-0"
+          style={{ paddingLeft: 12, paddingRight: 12 }}
+        >
+          {/* Left panel — stops */}
+          <div
+            className="flex-shrink-0 flex flex-col overflow-y-auto bg-white"
+            style={{ width: 280, borderRight: `0.5px solid ${BORDER}` }}
+          >
+            {renderLeftPanel()}
+          </div>
+
+          {/* Center — chat */}
+          <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white">
+            {renderChatOverlay && renderChatOverlay()}
+            <div
+              className="flex-1 flex flex-col min-h-0 w-full"
+              style={{ maxWidth: 640, marginLeft: "auto", marginRight: "auto" }}
+            >
+              {renderChat()}
+            </div>
+          </div>
+
+          {/* Right panel — map */}
+          <div
+            className="flex-shrink-0 flex flex-col bg-white"
+            style={{ width: 320, borderLeft: `0.5px solid ${BORDER}` }}
+          >
+            {renderRightPanel()}
+          </div>
+        </div>
+
         {/* Sidebar overlay backdrop */}
         {sidebarOpen && (
           <div
@@ -82,13 +174,13 @@ export default function TripLayout({
           />
         )}
 
-        {/* Sidebar overlay panel */}
+        {/* Sidebar overlay panel — slides over rail + left panel */}
         <aside
           className="absolute top-0 left-0 bottom-0 bg-white flex flex-col"
           style={{
             width: 220,
             zIndex: 20,
-            borderRight: "0.5px solid #e5e7eb",
+            borderRight: `0.5px solid ${BORDER}`,
             transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
             transition: "transform 0.2s",
             boxShadow: sidebarOpen ? "2px 0 16px rgba(0,0,0,0.08)" : undefined,
@@ -146,28 +238,6 @@ export default function TripLayout({
             </button>
           )}
         </aside>
-
-        {/* Left panel — stops */}
-        <div
-          className="flex-shrink-0 flex flex-col overflow-y-auto bg-white"
-          style={{ width: 240, borderRight: "0.5px solid #e5e7eb" }}
-        >
-          {renderLeftPanel()}
-        </div>
-
-        {/* Center — chat */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white">
-          {renderChatOverlay && renderChatOverlay()}
-          {renderChat()}
-        </div>
-
-        {/* Right panel — map */}
-        <div
-          className="flex-shrink-0 flex flex-col bg-white"
-          style={{ width: 280, borderLeft: "0.5px solid #e5e7eb" }}
-        >
-          {renderRightPanel()}
-        </div>
       </div>
     </div>
   );
