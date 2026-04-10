@@ -162,9 +162,12 @@ export default function VibePlanningPage() {
   // Options overlay — keyed by day_id so each day keeps its own options
   // Persisted to localStorage so options survive refresh and day switches
   const [optionsByDay, setOptionsByDay] = useState<Record<string, OptionsPayload>>({});
-  const [selectedOption, setSelectedOption] = useState<number>(0);
+  // selectedOption: -1 = curated (current day stops), 0..N = option index
+  const [selectedOption, setSelectedOption] = useState<number>(-1);
   const [cherryPickMode, setCherryPickMode] = useState(false);
   const [cherryPicks, setCherryPicks] = useState<Set<string>>(new Set());
+  // Map view mode when options are present: "all" shows curated + every option, "selected" shows only the focused source
+  const [optionsViewMode, setOptionsViewMode] = useState<"all" | "selected">("all");
   const optionsStorageKey = `vibe_options_${tripId}`;
 
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -260,7 +263,7 @@ export default function VibePlanningPage() {
     return pills;
   }, [trip]);
 
-  // Map preview stops: when an option is selected, show that option's stops; in cherry-pick, show checked stops
+  // Map preview stops: when options are present, the view mode controls which sources are pinned
   const previewMapStops: VibeStop[] = useMemo(() => {
     if (!optionsData) return picksStops;
     if (cherryPickMode) {
@@ -273,10 +276,36 @@ export default function VibePlanningPage() {
       });
       return flat;
     }
+    if (optionsViewMode === "all") {
+      const flat: VibeStop[] = [...picksStops];
+      optionsData.options.forEach((opt, optIdx) => {
+        opt.stops.forEach((s, i) => flat.push(optionStopToVibeStop(s, `prev-${optIdx}-${i}`)));
+      });
+      return flat;
+    }
+    // selected mode
+    if (selectedOption === -1) return picksStops;
     const opt = optionsData.options[selectedOption];
     if (!opt) return picksStops;
     return opt.stops.map((s, i) => optionStopToVibeStop(s, `prev-${selectedOption}-${i}`));
-  }, [optionsData, selectedOption, cherryPickMode, cherryPicks, picksStops]);
+  }, [optionsData, optionsViewMode, selectedOption, cherryPickMode, cherryPicks, picksStops]);
+
+  // Per-stop colors so curated and each option get distinct pin colors
+  const previewStopColors: Record<string, string> = useMemo(() => {
+    const colors: Record<string, string> = {};
+    if (!optionsData) return colors;
+    // Curated stops use the day color
+    picksStops.forEach(s => { colors[s.id] = dayColor; });
+    // Each option uses its source color
+    optionsData.options.forEach((opt, optIdx) => {
+      const c = SOURCE_BORDER[optIdx % SOURCE_BORDER.length];
+      opt.stops.forEach((_, i) => {
+        colors[`prev-${optIdx}-${i}`] = c;
+        colors[`${optIdx}-${i}`] = c; // cherry-pick id pattern
+      });
+    });
+    return colors;
+  }, [optionsData, picksStops, dayColor]);
 
   function optionStopToVibeStop(s: OptionStop, id: string): VibeStop {
     return {
@@ -339,7 +368,8 @@ export default function VibePlanningPage() {
         return next;
       });
     }
-    setSelectedOption(0);
+    setSelectedOption(-1);
+    setOptionsViewMode("all");
     setCherryPickMode(false);
     setCherryPicks(new Set());
   }
@@ -427,6 +457,7 @@ export default function VibePlanningPage() {
           const dayId = currentDay.id;
           setOptionsByDay(prev => ({ ...prev, [dayId]: parsed as OptionsPayload }));
           setSelectedOption(0);
+          setOptionsViewMode("all");
           setCherryPickMode(false);
           setCherryPicks(new Set());
         }
@@ -811,41 +842,104 @@ export default function VibePlanningPage() {
     </>
   );
 
-  const renderRightPanel = () => (
-    <div className="flex-1 relative min-h-0">
-      <VibeMap
-        stops={previewMapStops as Stop[]}
-        dayColor={dayColor}
-        highlightedStopId={highlightedStopId}
-        pulsingStopId={pulsingStopId}
-        onPinClick={(id: string) => highlightStop(id)}
-      />
-      {currentDay && (
-        <div
-          className="absolute top-2 left-2 px-2.5 py-1 rounded-md shadow-sm pointer-events-none"
-          style={{
-            backgroundColor: "rgba(255,255,255,0.95)",
-            zIndex: 500,
-            border: `1px solid ${dayColor}`,
-          }}
-        >
-          <div className="text-[10px] font-semibold" style={{ color: dayColor }}>
-            Day {currentDay.day_number}{currentDay.title ? ` · ${currentDay.title}` : ""}
-            {optionsData && !cherryPickMode && ` · Option ${SOURCE_LABELS[selectedOption % SOURCE_LABELS.length]}`}
-            {cherryPickMode && ` · Custom (${cherryPicks.size})`}
+  const renderRightPanel = () => {
+    const labelColor =
+      cherryPickMode || optionsViewMode === "all" || selectedOption === -1
+        ? dayColor
+        : SOURCE_BORDER[selectedOption % SOURCE_BORDER.length];
+    let labelSuffix = "";
+    if (cherryPickMode) {
+      labelSuffix = ` · Custom (${cherryPicks.size})`;
+    } else if (optionsData) {
+      if (optionsViewMode === "all") labelSuffix = " · All sources";
+      else if (selectedOption === -1) labelSuffix = " · Curated";
+      else labelSuffix = ` · Option ${SOURCE_LABELS[selectedOption % SOURCE_LABELS.length]}`;
+    }
+    return (
+      <div className="flex-1 relative min-h-0">
+        <VibeMap
+          stops={previewMapStops as Stop[]}
+          dayColor={dayColor}
+          highlightedStopId={highlightedStopId}
+          pulsingStopId={pulsingStopId}
+          stopColors={previewStopColors}
+          onPinClick={(id: string) => highlightStop(id)}
+        />
+        {currentDay && (
+          <div
+            className="absolute top-2 left-2 px-2.5 py-1 rounded-md shadow-sm pointer-events-none"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.95)",
+              zIndex: 500,
+              border: `1px solid ${labelColor}`,
+            }}
+          >
+            <div className="text-[10px] font-semibold" style={{ color: labelColor }}>
+              Day {currentDay.day_number}{currentDay.title ? ` · ${currentDay.title}` : ""}
+              {labelSuffix}
+            </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
+        )}
+        {optionsData && !cherryPickMode && (
+          <button
+            onClick={() => setOptionsViewMode(m => m === "all" ? "selected" : "all")}
+            className="absolute top-2 right-2 px-2.5 py-1 rounded-md shadow-sm text-[11px] font-medium transition-colors"
+            style={{
+              backgroundColor: "rgba(255,255,255,0.95)",
+              zIndex: 500,
+              border: "1px solid #e5e7eb",
+              color: "#374151",
+            }}
+          >
+            {optionsViewMode === "all" ? "All sources" : "Selected only"}
+          </button>
+        )}
+      </div>
+    );
+  };
 
   const renderChatOverlay = () => {
     if (!optionsData) return null;
+    const curatedSelected = selectedOption === -1 && !cherryPickMode;
     return (
       <div
         className="flex-shrink-0 border-b border-gray-100 bg-white"
         style={{ borderBottomWidth: 0.5 }}
       >
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
+          <span className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold">Sources</span>
+          <button
+            onClick={() => { setSelectedOption(-1); setCherryPickMode(false); }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors"
+            style={{
+              border: `1.5px solid ${dayColor}`,
+              backgroundColor: curatedSelected ? dayColor : "white",
+              color: curatedSelected ? "white" : dayColor,
+            }}
+          >
+            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: curatedSelected ? "white" : dayColor }} />
+            Curated ({picksStops.length})
+          </button>
+          {optionsData.options.map((opt, optIdx) => {
+            const isSel = selectedOption === optIdx && !cherryPickMode;
+            const c = SOURCE_BORDER[optIdx % SOURCE_BORDER.length];
+            return (
+              <button
+                key={optIdx}
+                onClick={() => { setSelectedOption(optIdx); setCherryPickMode(false); }}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors"
+                style={{
+                  border: `1.5px solid ${c}`,
+                  backgroundColor: isSel ? c : "white",
+                  color: isSel ? "white" : c,
+                }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isSel ? "white" : c }} />
+                {SOURCE_LABELS[optIdx % SOURCE_LABELS.length]} · {opt.label}
+              </button>
+            );
+          })}
+        </div>
         <div className="flex gap-3 px-4 py-3 items-stretch">
           {optionsData.options.map((opt, optIdx) => {
             const isSelected = selectedOption === optIdx && !cherryPickMode;
@@ -956,7 +1050,8 @@ export default function VibePlanningPage() {
           setSelectedVibe(null);
           setHighlightedStopId(null);
           setPulsingStopId(null);
-          setSelectedOption(0);
+          setSelectedOption(-1);
+          setOptionsViewMode("all");
           setCherryPickMode(false);
           setCherryPicks(new Set());
         }}

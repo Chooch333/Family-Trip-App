@@ -36,12 +36,14 @@ export default function VibeMap({
   dayColor,
   highlightedStopId,
   pulsingStopId,
+  stopColors,
   onPinClick,
 }: {
   stops: Stop[];
   dayColor: string;
   highlightedStopId?: string | null;
   pulsingStopId?: string | null;
+  stopColors?: Record<string, string>;
   onPinClick?: (stopId: string) => void;
 }) {
   const stopsWithCoords = stops.filter(isValidCoord);
@@ -75,14 +77,15 @@ export default function VibeMap({
           const baseRadius = 10;
           const selectedRadius = 18;
           const displayRadius = isPulsing ? 22 : (isSelected ? selectedRadius : baseRadius);
+          const pinColor = (stopColors && stopColors[stop.id]) || dayColor;
           return (
             <CircleMarker
               key={stop.id}
               center={[stop.latitude!, stop.longitude!]}
               radius={displayRadius}
               pathOptions={{
-                fillColor: isSelected ? "#fff" : dayColor,
-                color: isSelected ? dayColor : "#fff",
+                fillColor: isSelected ? "#fff" : pinColor,
+                color: isSelected ? pinColor : "#fff",
                 weight: isSelected ? 4 : 2,
                 fillOpacity: isPulsing ? 0.7 : (isSelected ? 0.95 : 0.85),
                 className: isPulsing ? "vibe-pin-pulse" : "",
