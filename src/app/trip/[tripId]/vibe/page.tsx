@@ -708,29 +708,30 @@ export default function VibePlanningPage() {
               ))}
             </SortableContext>
           )}
-        </div>
 
-        <div className="px-3 py-3 mt-auto border-t border-gray-100 flex flex-col gap-2 flex-shrink-0" style={{ borderTopWidth: 0.5 }}>
           {(isCurated || isCollab) && (
-            <>
+            <div className="flex gap-1.5 px-3 py-2.5 flex-shrink-0">
               <button
                 onClick={() => currentDay && lockDay(currentDay.id)}
-                className="w-full py-2 rounded-lg text-white text-[12px] font-medium"
+                className="flex-1 py-1.5 rounded-md text-white text-[11px] font-medium"
                 style={{ backgroundColor: "#1D9E75" }}
               >
-                {isCurated ? "Looks good — lock this day in" : "Love it — lock this day in"}
+                {isCurated ? "Looks good" : "Love it"}
               </button>
               <button
                 onClick={handleShowOptions}
                 disabled={isThinking}
-                className="w-full py-2 rounded-lg text-[12px] font-medium border border-dashed transition-colors hover:bg-purple-50 disabled:opacity-50"
+                className="flex-1 py-1.5 rounded-md text-[11px] font-medium border border-dashed transition-colors hover:bg-purple-50 disabled:opacity-50"
                 style={{ borderColor: "#A89BF1", color: "#534AB7" }}
               >
-                Show me other options
+                Other options
               </button>
-            </>
+            </div>
           )}
-          {isLocked && (
+        </div>
+
+        {isLocked && (
+          <div className="px-3 py-3 mt-auto border-t border-gray-100 flex flex-col gap-2 flex-shrink-0" style={{ borderTopWidth: 0.5 }}>
             <button
               onClick={() => currentDay && unlockDay(currentDay.id)}
               className="w-full py-2 rounded-lg text-[12px] font-medium border transition-colors hover:bg-purple-50"
@@ -738,8 +739,8 @@ export default function VibePlanningPage() {
             >
               Vibe this day
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </>
     );
   };
@@ -911,7 +912,7 @@ export default function VibePlanningPage() {
               color: "#374151",
             }}
           >
-            {optionsViewMode === "all" ? "All sources" : "Selected only"}
+            {optionsViewMode === "all" ? "Selected only" : "All sources"}
           </button>
         )}
       </div>
