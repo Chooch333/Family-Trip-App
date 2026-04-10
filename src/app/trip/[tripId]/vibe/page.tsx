@@ -906,41 +906,66 @@ export default function VibePlanningPage() {
         className="flex-shrink-0 border-b border-gray-100 bg-white"
         style={{ borderBottomWidth: 0.5 }}
       >
-        <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
-          <span className="text-[11px] text-gray-500 uppercase tracking-wider font-semibold">Sources</span>
-          <button
+        <div className="flex gap-3 px-4 py-3 items-stretch">
+          {/* Curated card — current day stops as a first-class source */}
+          <div
             onClick={() => { setSelectedOption(-1); setCherryPickMode(false); }}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors"
+            className="flex flex-col cursor-pointer transition-all"
             style={{
-              border: `1.5px solid ${dayColor}`,
-              backgroundColor: curatedSelected ? dayColor : "white",
-              color: curatedSelected ? "white" : dayColor,
+              flex: "1 1 0",
+              minWidth: 0,
+              border: curatedSelected ? `2px solid ${dayColor}` : "0.5px solid #e5e7eb",
+              borderRadius: 12,
+              backgroundColor: curatedSelected ? "#FAFFFD" : "white",
+              padding: 14,
             }}
           >
-            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: curatedSelected ? "white" : dayColor }} />
-            Curated ({picksStops.length})
-          </button>
-          {optionsData.options.map((opt, optIdx) => {
-            const isSel = selectedOption === optIdx && !cherryPickMode;
-            const c = SOURCE_BORDER[optIdx % SOURCE_BORDER.length];
-            return (
-              <button
-                key={optIdx}
-                onClick={() => { setSelectedOption(optIdx); setCherryPickMode(false); }}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors"
-                style={{
-                  border: `1.5px solid ${c}`,
-                  backgroundColor: isSel ? c : "white",
-                  color: isSel ? "white" : c,
-                }}
+            <div className="flex items-start justify-between gap-2 mb-1.5">
+              <div className="text-[14px] font-semibold text-gray-900 leading-tight flex-1 min-w-0">
+                {currentDay?.title ? currentDay.title : `Day ${currentDay?.day_number || ""}`}
+              </div>
+              <span
+                className="flex-shrink-0 px-1.5 py-0.5 rounded text-[11px] font-bold"
+                style={{ backgroundColor: "#E1F5EE", color: "#0F6E56" }}
               >
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isSel ? "white" : c }} />
-                {SOURCE_LABELS[optIdx % SOURCE_LABELS.length]} · {opt.label}
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex gap-3 px-4 py-3 items-stretch">
+                Now
+              </span>
+            </div>
+            <div
+              className="text-[11px] mb-2.5 px-2 py-0.5 rounded inline-block self-start leading-snug"
+              style={{ backgroundColor: "#E1F5EE", color: "#0F6E56" }}
+            >
+              Current plan
+            </div>
+            <div className="flex flex-col gap-1 mb-3 flex-1">
+              {picksStops.length === 0 ? (
+                <div className="text-[12px] text-gray-400 italic">No stops yet</div>
+              ) : (
+                picksStops.map(s => {
+                  const isHL = highlightedStopId === s.id;
+                  return (
+                    <div
+                      key={s.id}
+                      onClick={(e) => { e.stopPropagation(); highlightStop(s.id); }}
+                      className="flex items-center gap-2 py-1 px-1.5 rounded cursor-pointer hover:bg-gray-50"
+                      style={{ backgroundColor: isHL ? "#f3f4f6" : "transparent" }}
+                    >
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dayColor }} />
+                      <span className="text-[13px] text-gray-800 flex-1 min-w-0" style={{ fontWeight: isHL ? 600 : 400, lineHeight: 1.4 }}>{s.name}</span>
+                      <span className="text-[11px] text-gray-400 flex-shrink-0">{s.stop_type || "visit"}</span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); if (currentDay) lockDay(currentDay.id); dismissOptions(); }}
+              className="w-full py-2 rounded-lg text-white text-[13px] font-medium"
+              style={{ backgroundColor: "#1D9E75" }}
+            >
+              Lock this in
+            </button>
+          </div>
           {optionsData.options.map((opt, optIdx) => {
             const isSelected = selectedOption === optIdx && !cherryPickMode;
             return (
