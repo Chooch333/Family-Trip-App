@@ -156,6 +156,7 @@ export default function VibePlanningPage() {
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [isThinking, setIsThinking] = useState(false);
   const [highlightedStopId, setHighlightedStopId] = useState<string | null>(null);
+  const [pulsingStopId, setPulsingStopId] = useState<string | null>(null);
   const [allTrips, setAllTrips] = useState<Trip[]>([]);
 
   // Options overlay
@@ -445,6 +446,27 @@ export default function VibePlanningPage() {
     });
   }
 
+  function highlightStop(id: string | null) {
+    if (id === null) {
+      setHighlightedStopId(null);
+      return;
+    }
+    setHighlightedStopId(prev => prev === id ? null : id);
+    setPulsingStopId(id);
+    setTimeout(() => setPulsingStopId(p => p === id ? null : p), 800);
+  }
+
+  function highlightOptionStop(optIdx: number, stopIdx: number) {
+    if (selectedOption !== optIdx) {
+      setSelectedOption(optIdx);
+      setCherryPickMode(false);
+    }
+    const id = `prev-${optIdx}-${stopIdx}`;
+    setHighlightedStopId(id);
+    setPulsingStopId(id);
+    setTimeout(() => setPulsingStopId(p => p === id ? null : p), 800);
+  }
+
   // ---------- Render functions ----------
   const renderLeftPanel = () => {
     if (!currentDay) {
@@ -475,12 +497,20 @@ export default function VibePlanningPage() {
           <div className="flex flex-col">
             {allOptionStops.map(({ key, stop, sourceIdx }) => {
               const checked = cherryPicks.has(key);
+              const isHL = highlightedStopId === key;
               return (
                 <div
                   key={key}
-                  onClick={() => toggleCherryPick(key)}
+                  onClick={() => {
+                    toggleCherryPick(key);
+                    highlightStop(key);
+                  }}
                   className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 cursor-pointer hover:bg-gray-50"
-                  style={{ opacity: checked ? 1 : 0.35, borderBottomWidth: 0.5 }}
+                  style={{
+                    opacity: checked ? 1 : 0.35,
+                    borderBottomWidth: 0.5,
+                    backgroundColor: isHL ? "#f9fafb" : "transparent",
+                  }}
                 >
                   <div
                     className="flex-shrink-0 flex items-center justify-center"
@@ -587,7 +617,7 @@ export default function VibePlanningPage() {
                   stop={stop}
                   dayColor={dayColor}
                   isHighlighted={highlightedStopId === stop.id}
-                  onClick={() => setHighlightedStopId(prev => prev === stop.id ? null : stop.id)}
+                  onClick={() => highlightStop(stop.id)}
                 />
               ))}
             </SortableContext>
@@ -752,7 +782,8 @@ export default function VibePlanningPage() {
         stops={previewMapStops as Stop[]}
         dayColor={dayColor}
         highlightedStopId={highlightedStopId}
-        onPinClick={(id: string) => setHighlightedStopId(id)}
+        pulsingStopId={pulsingStopId}
+        onPinClick={(id: string) => highlightStop(id)}
       />
       {currentDay && (
         <div
@@ -820,13 +851,22 @@ export default function VibePlanningPage() {
                   {opt.summary}
                 </div>
                 <div className="flex-1 overflow-y-auto min-h-0 mb-1.5">
-                  {opt.stops.slice(0, 6).map((s, i) => (
-                    <div key={i} className="flex items-center gap-1.5 py-0.5">
-                      <span className="w-1 h-1 rounded-full flex-shrink-0" style={{ backgroundColor: dayColor }} />
-                      <span className="text-[10px] text-gray-700 flex-1 min-w-0 truncate">{s.name}</span>
-                      <span className="text-[8px] text-gray-400 flex-shrink-0">{s.stop_type || "visit"}</span>
-                    </div>
-                  ))}
+                  {opt.stops.slice(0, 6).map((s, i) => {
+                    const synthId = `prev-${optIdx}-${i}`;
+                    const isHL = highlightedStopId === synthId && selectedOption === optIdx && !cherryPickMode;
+                    return (
+                      <div
+                        key={i}
+                        onClick={(e) => { e.stopPropagation(); highlightOptionStop(optIdx, i); }}
+                        className="flex items-center gap-1.5 py-0.5 px-1 rounded cursor-pointer hover:bg-purple-50"
+                        style={{ backgroundColor: isHL ? "#EEEDFE" : "transparent" }}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: dayColor }} />
+                        <span className="text-[10px] text-gray-700 flex-1 min-w-0 truncate" style={{ fontWeight: isHL ? 600 : 400 }}>{s.name}</span>
+                        <span className="text-[8px] text-gray-400 flex-shrink-0">{s.stop_type || "visit"}</span>
+                      </div>
+                    );
+                  })}
                 </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); goWithOption(optIdx); }}
@@ -882,6 +922,7 @@ export default function VibePlanningPage() {
           setActiveDay(idx);
           setSelectedVibe(null);
           setHighlightedStopId(null);
+          setPulsingStopId(null);
           dismissOptions();
         }}
         trips={allTrips}
