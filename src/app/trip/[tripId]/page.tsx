@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { getMemberForTrip, getSessionTokens } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
 import { askClaude, executeToolCall, getPromptChips } from "@/lib/claude";
-import DayBar from "@/components/DayBar";
+import TripLayout from "@/components/TripLayout";
 import ReactMarkdown from "react-markdown";
 import type { Trip, TripMember, Day, Stop, Vote, Proposal } from "@/lib/database.types";
 
@@ -14,8 +14,6 @@ interface TripSwitcherItem {
   memberCount: number;
   role: "organizer" | "member";
 }
-
-type ViewId = "itinerary" | "map" | "votes" | "ai" | "journal";
 
 // --- Dynamic color gradient: forest green → teal → cyan → blue → indigo → purple/rose ---
 function generateDayColors(count: number): string[] {
@@ -217,9 +215,7 @@ export default function TripDashboard() {
   const [stops, setStops] = useState<Stop[]>([]);
   const [votes, setVotes] = useState<Vote[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [activeView, setActiveView] = useState<ViewId>("itinerary");
   const [activeDay, setActiveDay] = useState<number>(0);
-  const [isSandbox, setIsSandbox] = useState(false);
   const [showAddDay, setShowAddDay] = useState(false);
   const [newDayTitle, setNewDayTitle] = useState("");
   const [addingDay, setAddingDay] = useState(false);
@@ -236,15 +232,10 @@ export default function TripDashboard() {
   // Lightbox state
   const [lightboxStop, setLightboxStop] = useState<Stop | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState(0);
-  // Share name prompt
-  const [showNamePrompt, setShowNamePrompt] = useState(false);
-  const [nameInput, setNameInput] = useState("");
   // Trip summary splash
   const [showTripSplash, setShowTripSplash] = useState(false);
   // Trip switcher
-  const [tripSwitcherOpen, setTripSwitcherOpen] = useState(false);
   const [allTrips, setAllTrips] = useState<TripSwitcherItem[]>([]);
-  const tripButtonRef = useRef<HTMLButtonElement>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const stopRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -694,15 +685,408 @@ Rules:
   );
 
   if (!trip || !currentMember) return null;
-  const isOrganizer = currentMember.role === "organizer";
   const currentDayStops = days[activeDay] ? stops.filter(s => s.day_id === days[activeDay].id) : [];
-  const onlineMembers = members.filter(m => m.is_online);
   const stopsWithCoords = stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit");
 
   const lightboxPhotos = lightboxStop?.photos ? (lightboxStop.photos as { url: string; attribution?: string }[]) : [];
 
+  // ---------- Render-prop content for TripLayout ----------
+  const renderLeftPanel = () => {
+    const activeDayObj = days[activeDay];
+    const dayColor = activeDayObj ? getDayColor(activeDay) : "#1D9E75";
+    return (
+      <>
+        {showAddDay && (
+          <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/60 flex-shrink-0">
+            <div className="flex flex-col gap-1.5">
+              <input
+                type="text"
+                value={newDayTitle}
+                onChange={e => setNewDayTitle(e.target.value)}
+                placeholder="Day title (e.g. Traverse City)"
+                autoFocus
+                className="text-[12px] px-2.5 py-1.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
+                onKeyDown={e => e.key === "Enter" && handleAddDay()}
+              />
+              <div className="flex gap-1.5">
+                <button
+                  onClick={handleAddDay}
+                  disabled={addingDay || !newDayTitle.trim()}
+                  className="flex-1 px-2 py-1 rounded-md bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {addingDay ? "Adding..." : "Add"}
+                </button>
+                <button
+                  onClick={() => { setShowAddDay(false); setNewDayTitle(""); }}
+                  className="px-2 py-1 rounded-md text-gray-400 text-[11px] hover:text-gray-600 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeDayObj && (
+          <div
+            className="sticky top-0 z-10 bg-white px-3 py-3 border-b border-gray-100 flex-shrink-0"
+            style={{ borderBottomWidth: 0.5 }}
+          >
+            <div className="text-[12px] font-semibold text-gray-900 leading-tight">
+              Day {activeDayObj.day_number}{activeDayObj.title ? ` · ${activeDayObj.title}` : ""}
+            </div>
+            {activeDayObj.narrative && (
+              <div className="text-[10px] text-gray-500 leading-snug mt-1.5 line-clamp-3">
+                {activeDayObj.narrative}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div>
+          {!activeDayObj && (
+            <div className="px-3 py-10 text-center">
+              <p className="text-gray-400 text-[11px]">No days yet</p>
+            </div>
+          )}
+          {activeDayObj && currentDayStops.length === 0 && (
+            <div className="px-3 py-10 text-center">
+              <p className="text-gray-400 text-[11px]">No stops on this day yet</p>
+            </div>
+          )}
+          {currentDayStops.map(stop => {
+            if (stop.stop_type === "transit") {
+              const tname = stop.name.toLowerCase();
+              const icon = tname.includes("train") || tname.includes("rail") ? "🚆"
+                : tname.includes("fly") || tname.includes("flight") ? "✈️"
+                : tname.includes("ferry") || tname.includes("boat") ? "⛴️"
+                : "🚗";
+              const dur = stop.duration_minutes >= 60
+                ? `${(stop.duration_minutes / 60).toFixed(stop.duration_minutes % 60 === 0 ? 0 : 1)}h`
+                : `${stop.duration_minutes}m`;
+              return (
+                <div
+                  key={stop.id}
+                  ref={el => { if (el) stopRefs.current.set(stop.id, el); }}
+                  className="flex items-center gap-2 px-3 py-2"
+                >
+                  <div className="flex-1 h-px" style={{ backgroundColor: dayColor, opacity: 0.25 }} />
+                  <span className="text-[11px]">{icon}</span>
+                  <span className="text-[10px] font-medium text-gray-600 truncate">{stop.name}</span>
+                  <span className="text-[10px] text-gray-400 flex-shrink-0">· {dur}</span>
+                  <div className="flex-1 h-px" style={{ backgroundColor: dayColor, opacity: 0.25 }} />
+                </div>
+              );
+            }
+            const isSelected = expandedStop === stop.id;
+            return (
+              <div
+                key={stop.id}
+                ref={el => { if (el) stopRefs.current.set(stop.id, el); }}
+                onClick={(e) => { e.stopPropagation(); handleStopCardClick(stop); }}
+                className="flex items-stretch border-b border-gray-100 cursor-pointer transition-colors"
+                style={{
+                  backgroundColor: isSelected ? "#f9fafb" : "transparent",
+                  borderBottomWidth: 0.5,
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = "#fafafa";
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                }}
+              >
+                <div className="flex-shrink-0" style={{ width: 4, backgroundColor: dayColor }} />
+                <div className="flex-1 min-w-0 px-3 py-2.5 flex items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12px] font-medium text-gray-900 truncate leading-tight">
+                      {stop.name}
+                    </div>
+                    <div className="text-[10px] text-gray-500 mt-0.5 truncate">
+                      {stop.stop_type} · {stop.duration_minutes} min
+                    </div>
+                  </div>
+                  {stop.start_time && (
+                    <div className="text-[10px] text-gray-400 whitespace-nowrap pt-0.5">
+                      {formatTime12(stop.start_time)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {showAddStop && activeDayObj && (
+          <div className="px-3 py-2 border-t border-gray-100 bg-gray-50/60">
+            <div className="text-[11px] font-medium text-gray-700 mb-1.5">New stop for Day {activeDayObj.day_number}</div>
+            <div className="flex flex-col gap-1.5">
+              <input
+                type="text"
+                value={newStop.name}
+                onChange={e => setNewStop(s => ({ ...s, name: e.target.value }))}
+                placeholder="Stop name *"
+                autoFocus
+                className="text-[11px] px-2 py-1.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
+              />
+              <input
+                type="text"
+                value={newStop.description}
+                onChange={e => setNewStop(s => ({ ...s, description: e.target.value }))}
+                placeholder="Description"
+                className="text-[11px] px-2 py-1.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
+              />
+              <div className="flex gap-1.5">
+                <input
+                  type="time"
+                  value={newStop.start_time}
+                  onChange={e => setNewStop(s => ({ ...s, start_time: e.target.value }))}
+                  className="flex-1 text-[11px] px-2 py-1.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
+                />
+                <input
+                  type="number"
+                  value={newStop.duration_minutes}
+                  onChange={e => setNewStop(s => ({ ...s, duration_minutes: parseInt(e.target.value) || 0 }))}
+                  min="0"
+                  className="w-16 text-[11px] px-2 py-1.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
+                />
+              </div>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={handleAddStop}
+                  disabled={addingStop || !newStop.name.trim()}
+                  className="flex-1 px-2 py-1 rounded-md bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {addingStop ? "Adding..." : "Add"}
+                </button>
+                <button
+                  onClick={() => { setShowAddStop(false); setNewStop({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "" }); }}
+                  className="px-2 py-1 rounded-md text-gray-400 text-[11px] hover:text-gray-600 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="px-3 py-2.5 mt-auto border-t border-gray-100 flex-shrink-0 flex flex-col gap-1.5" style={{ borderTopWidth: 0.5 }}>
+          {!showAddStop && activeDayObj && (
+            <button
+              onClick={() => setShowAddStop(true)}
+              className="w-full border border-dashed border-gray-300 rounded-lg py-1.5 text-[11px] text-gray-500 hover:border-emerald-400 hover:text-emerald-600 transition-colors"
+            >
+              + Add stop
+            </button>
+          )}
+          {activeDayObj && (
+            <button
+              onClick={() => router.push(`/trip/${tripId}/vibe`)}
+              className="w-full border border-dashed rounded-lg py-1.5 text-[11px] transition-colors hover:bg-purple-50"
+              style={{ borderColor: "#A89BF1", color: "#534AB7" }}
+            >
+              Re-vibe this day
+            </button>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  const renderChat = () => (
+    <>
+      <div className="flex-1 overflow-y-auto px-4 py-4 min-h-0">
+        {chatMessages.length === 0 && days.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-8 px-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="14" rx="3" />
+                <path d="M7 10h10m-10 4h6" />
+              </svg>
+            </div>
+            <h2 className="text-[15px] font-semibold text-gray-900 mb-1">Plan your trip with Claude</h2>
+            <p className="text-[12px] text-gray-500 text-center max-w-[380px] mb-5 leading-relaxed">
+              Tell me about your trip — where are you going, how long, and what does your family enjoy?
+            </p>
+            <div className="flex flex-wrap gap-2 justify-center max-w-[460px]">
+              {["Plan 9 days in Italy with kids", "Weekend trip to Northern Michigan", "5-day beach vacation in Florida", "Family road trip through national parks"].map(chip => (
+                <button
+                  key={chip}
+                  onClick={() => handleChatSend(chip)}
+                  className="px-3 py-1.5 rounded-full text-[11px] border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {chatMessages.length === 0 && days.length > 0 && (
+          <div className="flex flex-col items-center justify-center py-6 px-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" strokeWidth="2">
+                  <rect x="3" y="4" width="18" height="14" rx="3" />
+                  <path d="M7 10h10" strokeLinecap="round" />
+                </svg>
+              </div>
+              <span className="text-[12px] font-medium text-gray-600">Claude is ready</span>
+            </div>
+            <p className="text-[11px] text-gray-500 text-center max-w-[380px] mb-3">
+              Ask anything about your trip — change a stop, suggest restaurants, rebalance the day.
+            </p>
+          </div>
+        )}
+
+        {chatMessages.map((msg, idx) => (
+          <div key={idx} className={`mb-4 flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+            {msg.role === "user" ? (
+              <div className="max-w-[80%] rounded-2xl px-3.5 py-2 text-[13px] leading-[1.55] whitespace-pre-wrap" style={{ backgroundColor: "#F5F4F0", color: "#1f2937" }}>
+                {msg.content}
+              </div>
+            ) : (
+              <div className="max-w-[88%]">
+                <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "#534AB7" }}>Claude</div>
+                <div className="text-[13px] text-gray-800 leading-[1.6] chat-markdown">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {generatingItinerary && (
+          <div className="mb-4 flex justify-start">
+            <div className="max-w-[88%]">
+              <div className="text-[10px] font-semibold uppercase tracking-wider mb-1" style={{ color: "#534AB7" }}>Claude</div>
+              <div className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "#534AB7", animationDelay: "0ms" }} />
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "#534AB7", animationDelay: "150ms" }} />
+                <span className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ backgroundColor: "#534AB7", animationDelay: "300ms" }} />
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={chatEndRef} />
+      </div>
+
+      {chatMessages.length === 0 && days.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 px-4 pb-2 flex-shrink-0">
+          {getPromptChips(trip).map(chip => (
+            <button
+              key={chip}
+              onClick={() => handleChatSend(chip)}
+              className="px-2.5 py-1 rounded-full text-[11px] border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+              disabled={generatingItinerary}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div
+        className="flex gap-2 px-4 py-2.5 flex-shrink-0 border-t border-gray-100"
+        style={{ borderTopWidth: 0.5 }}
+      >
+        <input
+          type="text"
+          value={chatInput}
+          onChange={e => setChatInput(e.target.value)}
+          placeholder={days.length === 0 ? "Describe your dream trip..." : "Ask about your trip..."}
+          className="flex-1 text-[13px] px-4 py-2.5 border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-300 transition-colors"
+          style={{ borderRadius: 20 }}
+          onKeyDown={e => e.key === "Enter" && handleChatSend()}
+          disabled={generatingItinerary}
+        />
+        <button
+          onClick={() => handleChatSend()}
+          disabled={generatingItinerary || !chatInput.trim()}
+          className="px-4 py-2.5 text-[12px] font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ backgroundColor: "#534AB7", borderRadius: 20 }}
+        >
+          {generatingItinerary ? "..." : "Send"}
+        </button>
+      </div>
+    </>
+  );
+
+  const renderRightPanel = () => {
+    const activeDayObj = days[activeDay];
+    return (
+      <>
+        {multiCity && routeCities.length >= 2 && stopsWithCoords.length > 0 && (
+          <div className="px-3 py-2 border-b border-gray-100 bg-white flex-shrink-0 text-center" style={{ borderBottomWidth: 0.5 }}>
+            <div className="text-[12px] font-medium text-gray-600 flex items-center justify-center gap-1 flex-wrap">
+              {routeCities.map((city, i) => {
+                const isActiveCity = i === activeCityIndex;
+                const activeDayColor = dayColors[activeDay] || "#1D9E75";
+                return (
+                  <span key={`${city.name}-${i}`} className="whitespace-nowrap">
+                    {i > 0 && <span className="text-gray-300 mx-1">→</span>}
+                    <span style={{
+                      fontWeight: isActiveCity ? 700 : 500,
+                      color: isActiveCity ? activeDayColor : undefined,
+                    }}>{city.name}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {multiCity && routeCities.length >= 2 && stopsWithCoords.length > 0 && (
+          <RegionalMap
+            routeCities={routeCities}
+            activeCityIndex={activeCityIndex}
+            activeDayColor={dayColors[activeDay] || "#1D9E75"}
+            onSelectDay={setActiveDay}
+          />
+        )}
+        <div className="flex-1 relative min-h-0">
+          {stopsWithCoords.length > 0 ? (
+            <>
+              <TripMap
+                stops={stops}
+                days={days}
+                activeDay={activeDay}
+                dayColors={dayColors}
+                pulsingStop={pulsingStop}
+                selectedStop={expandedStop}
+                onPinClick={handleMapPinClick}
+              />
+              {activeDayObj && (
+                <div
+                  className="absolute top-2 left-2 px-2.5 py-1 rounded-md shadow-sm pointer-events-none"
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.95)",
+                    zIndex: 500,
+                    border: `1px solid ${dayColors[activeDay] || "#1D9E75"}`,
+                  }}
+                >
+                  <div className="text-[10px] font-semibold" style={{ color: dayColors[activeDay] || "#1D9E75" }}>
+                    Day {activeDayObj.day_number}{activeDayObj.title ? ` · ${activeDayObj.title}` : ""}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
+              <div className="text-center px-4">
+                <svg className="w-10 h-10 text-gray-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z" />
+                </svg>
+                <p className="text-gray-400 text-[11px]">Add stops with coordinates to see the map</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
   return (
-    <div className="h-screen flex bg-white overflow-hidden">
+    <>
       {/* Trip summary splash overlay */}
       {showTripSplash && (trip as Trip & { trip_summary?: string | null }).trip_summary && (
         <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/40">
@@ -715,18 +1099,16 @@ Rules:
           </div>
         </div>
       )}
+
       {/* Lightbox overlay */}
       {lightboxStop && lightboxPhotos.length > 0 && (
         <div className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center" onClick={closeLightbox}>
           <div className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
             <img src={lightboxPhotos[lightboxIndex]?.url} alt="" className="max-w-full max-h-[85vh] object-contain rounded-lg" />
-            {/* Close button */}
             <button onClick={closeLightbox} className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-lg">&times;</button>
-            {/* Counter */}
             <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-3 py-1 rounded-full">
               {lightboxIndex + 1} / {lightboxPhotos.length}
             </div>
-            {/* Prev/Next */}
             {lightboxPhotos.length > 1 && (
               <>
                 <button onClick={lightboxPrev} className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-xl">&lsaquo;</button>
@@ -737,543 +1119,22 @@ Rules:
         </div>
       )}
 
-      {/* Sidebar */}
-      <div className="hidden md:flex w-[52px] flex-col items-center py-3 gap-1 border-r border-gray-100 bg-gray-50/50 flex-shrink-0">
-        {([
-          { id: "itinerary" as ViewId, label: "Itinerary", d: "M12 4a8 8 0 100 16 8 8 0 000-16zm0 4a4 4 0 110 8 4 4 0 010-8z" },
-          { id: "map" as ViewId, label: "Map", d: "M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z" },
-          { id: "votes" as ViewId, label: "Votes", d: "M12 3l3 6 6.5.75-4.75 4.5 1.25 6.75L12 17.5 5.5 21l1.25-6.75L2 9.75 8.5 9z" },
-          { id: "ai" as ViewId, label: "AI", d: "M3 4h18v14H3V4zm4 6h10m-10 4h6" },
-          { id: "journal" as ViewId, label: "Journal", d: "M4 2h16v20H4V2zm4 5h8m-8 4h8m-8 4h4" },
-        ] as const).map(item => (
-          <button key={item.id} onClick={() => setActiveView(item.id)} title={item.label}
-            className={`relative w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${activeView === item.id ? "bg-emerald-100" : "hover:bg-gray-100"}`}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={activeView === item.id ? "#0F6E56" : "#888"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d={item.d} />
-            </svg>
-            {item.id === "votes" && proposals.length > 0 && <span className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-500 text-white text-[8px] font-bold flex items-center justify-center">{proposals.length}</span>}
-          </button>
-        ))}
-        <div className="flex-1" />
-        <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-semibold relative" style={{ backgroundColor: currentMember.avatar_color }} title={currentMember.display_name}>
-          {currentMember.avatar_initial}
-          <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white" />
-        </div>
-      </div>
-
-      {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 flex-shrink-0 z-20 bg-white relative">
-          <div className="flex items-center gap-2.5">
-            {/* Trip switcher button */}
-            <button
-              ref={tripButtonRef}
-              onClick={() => setTripSwitcherOpen(!tripSwitcherOpen)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white transition-colors"
-              style={{
-                border: tripSwitcherOpen ? "1.5px solid #1D9E75" : "1.5px solid #d1d5db",
-                backgroundColor: tripSwitcherOpen ? "#f0fdf8" : "white",
-              }}
-              onMouseEnter={e => { if (!tripSwitcherOpen) (e.currentTarget as HTMLElement).style.borderColor = "#9ca3af"; }}
-              onMouseLeave={e => { if (!tripSwitcherOpen) (e.currentTarget as HTMLElement).style.borderColor = "#d1d5db"; }}
-            >
-              <div className="text-left">
-                <div className="text-[15px] font-medium text-gray-900 leading-tight">{trip.name}</div>
-                <div className="text-[11px] text-gray-500 leading-tight">{trip.duration || `${days.length} days`} · {stops.length} stops · {members.length} travelers</div>
-              </div>
-              <svg className={`w-4 h-4 text-gray-400 transition-transform ${tripSwitcherOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            {/* + New trip button */}
-            <button
-              onClick={() => router.push("/")}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors"
-              style={{ border: "1.5px solid #1D9E75", background: "#E1F5EE", color: "#085041" }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#9FE1CB"; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "#E1F5EE"; }}
-            >
-              <span className="text-sm font-bold">+</span> New trip
-            </button>
-
-            {/* Trip switcher dropdown */}
-            {tripSwitcherOpen && (
-              <>
-                {/* Overlay to close dropdown on outside click */}
-                <div className="fixed inset-0 z-30" onClick={() => setTripSwitcherOpen(false)} />
-                <div className="absolute left-4 top-full mt-1 z-40 bg-white rounded-xl shadow-lg" style={{ width: 340, border: "1.5px solid #e5e7eb", padding: 6 }}>
-                  {allTrips.map((item, idx) => {
-                    const isCurrent = item.trip.id === tripId;
-                    const abbrev = item.trip.name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
-                    const travelInfo = [
-                      item.trip.duration,
-                      item.trip.travel_dates,
-                      `${item.memberCount} travelers`,
-                    ].filter(Boolean).join(" · ");
-                    return (
-                      <div key={item.trip.id}>
-                        <button
-                          onClick={() => {
-                            if (!isCurrent) {
-                              setTripSwitcherOpen(false);
-                              router.push(`/trip/${item.trip.id}`);
-                            } else {
-                              setTripSwitcherOpen(false);
-                            }
-                          }}
-                          className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors"
-                          style={{
-                            backgroundColor: isCurrent ? "#E1F5EE" : "transparent",
-                          }}
-                          onMouseEnter={e => { if (!isCurrent) (e.currentTarget as HTMLElement).style.backgroundColor = "#f5f5f4"; }}
-                          onMouseLeave={e => { if (!isCurrent) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
-                        >
-                          <div className="w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold flex-shrink-0" style={{ background: "#F1EFE8", color: "#5F5E5A" }}>
-                            {abbrev}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[14px] font-medium text-gray-900 truncate">{item.trip.name}</div>
-                            <div className="text-[11px] text-gray-500 truncate">{travelInfo}</div>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={item.role === "organizer" ? { background: "#E1F5EE", color: "#085041" } : { background: "#E6F1FB", color: "#0C447C" }}>
-                              {item.role === "organizer" ? "Organizer" : "Invited"}
-                            </span>
-                            {isCurrent && (
-                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="#1D9E75" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                              </svg>
-                            )}
-                          </div>
-                        </button>
-                        {idx === allTrips.length - 1 && <div style={{ height: 0.5, background: "#e5e7eb", margin: "4px 0" }} />}
-                      </div>
-                    );
-                  })}
-                  {/* Start a new trip row */}
-                  <button
-                    onClick={() => { setTripSwitcherOpen(false); router.push("/"); }}
-                    className="w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors"
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = "#E1F5EE"; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
-                  >
-                    <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "#E1F5EE", color: "#1D9E75" }}>
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                      </svg>
-                    </div>
-                    <div className="text-[14px] font-medium text-gray-900">Start a new trip</div>
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {isOrganizer && <div className="flex gap-1">
-              <button onClick={() => setIsSandbox(false)} className={`px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors ${!isSandbox ? "bg-emerald-100 text-emerald-700" : "bg-white border border-gray-200 text-gray-500"}`}>Master</button>
-              <button onClick={() => setIsSandbox(true)} className={`px-2.5 py-1 rounded-md text-[10px] font-medium transition-colors ${isSandbox ? "bg-blue-100 text-blue-700" : "bg-white border border-gray-200 text-gray-500"}`}>My sandbox</button>
-            </div>}
-            {showNamePrompt ? (
-              <div className="flex items-center gap-1.5">
-                <input type="text" value={nameInput} onChange={e => setNameInput(e.target.value)} placeholder="Your name" autoFocus
-                  className="text-[10px] px-2 py-1 rounded-md border border-emerald-300 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 w-28"
-                  onKeyDown={async e => {
-                    if (e.key === "Enter" && nameInput.trim() && currentMember) {
-                      await supabase.from("trip_members").update({ display_name: nameInput.trim(), avatar_initial: nameInput.trim().charAt(0).toUpperCase() }).eq("id", currentMember.id);
-                      setCurrentMember({ ...currentMember, display_name: nameInput.trim(), avatar_initial: nameInput.trim().charAt(0).toUpperCase() });
-                      setShowNamePrompt(false);
-                      navigator.clipboard.writeText(`${window.location.origin}/trip/${tripId}/invite`);
-                    }
-                  }} />
-                <button onClick={async () => {
-                  if (nameInput.trim() && currentMember) {
-                    await supabase.from("trip_members").update({ display_name: nameInput.trim(), avatar_initial: nameInput.trim().charAt(0).toUpperCase() }).eq("id", currentMember.id);
-                    setCurrentMember({ ...currentMember, display_name: nameInput.trim(), avatar_initial: nameInput.trim().charAt(0).toUpperCase() });
-                    setShowNamePrompt(false);
-                    navigator.clipboard.writeText(`${window.location.origin}/trip/${tripId}/invite`);
-                  }
-                }} className="px-2 py-1 rounded-md text-[10px] bg-emerald-500 text-white font-medium hover:bg-emerald-600">OK</button>
-              </div>
-            ) : (
-              <button onClick={() => {
-                if (currentMember && currentMember.display_name === "Organizer") { setShowNamePrompt(true); }
-                else { navigator.clipboard.writeText(`${window.location.origin}/trip/${tripId}/invite`); }
-              }} className="px-2.5 py-1 rounded-md text-[10px] border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors">Share link</button>
-            )}
-          </div>
-        </div>
-
-        {/* Day tabs — full width across both panels */}
-        <DayBar days={days} activeDay={activeDay} dayColors={dayColors} onSelectDay={setActiveDay} showAddDay dimmed={tripSwitcherOpen} onAddDay={() => setShowAddDay(true)} />
-
-        {showAddDay && (
-          <div className="px-3 py-2 border-b border-gray-100 bg-gray-50/50 flex-shrink-0">
-            <div className="flex gap-2 items-center">
-              <input type="text" value={newDayTitle} onChange={e => setNewDayTitle(e.target.value)} placeholder="Day title (e.g. Traverse City)" autoFocus
-                className="flex-1 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
-                onKeyDown={e => e.key === "Enter" && handleAddDay()} />
-              <button onClick={handleAddDay} disabled={addingDay || !newDayTitle.trim()}
-                className="px-3 py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                {addingDay ? "Adding..." : "Add"}
-              </button>
-              <button onClick={() => { setShowAddDay(false); setNewDayTitle(""); }} className="px-2 py-1.5 rounded-lg text-gray-400 text-[11px] hover:text-gray-600 transition-colors">Cancel</button>
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-1 min-h-0" style={{ opacity: tripSwitcherOpen ? 0.4 : 1, transition: "opacity 0.2s", pointerEvents: tripSwitcherOpen ? "none" : "auto" }}>
-          {/* Left panel */}
-          <div className="w-full md:w-[55%] md:border-r border-gray-100 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-y-auto px-3 py-2" onClick={() => setExpandedStop(null)}>
-              {days.length === 0 ? (
-                /* AI Chat — empty trip experience */
-                <div className="flex flex-col h-full">
-                  <div className="flex-1 overflow-y-auto">
-                    {chatMessages.length === 0 && (
-                      <div className="flex flex-col items-center justify-center py-8 px-4">
-                        <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mb-4">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="3" y="4" width="18" height="14" rx="3" /><path d="M7 10h10m-10 4h6" />
-                          </svg>
-                        </div>
-                        <h2 className="text-[15px] font-semibold text-gray-900 mb-1">Plan your trip with Claude</h2>
-                        <p className="text-[12px] text-gray-500 text-center max-w-[300px] mb-5 leading-relaxed">
-                          Tell me about your trip — where are you going, how long, and what does your family enjoy?
-                        </p>
-                        <div className="flex flex-wrap gap-2 justify-center max-w-[380px]">
-                          {["Plan 9 days in Italy with kids", "Weekend trip to Northern Michigan", "5-day beach vacation in Florida", "Family road trip through national parks"].map(chip => (
-                            <button key={chip} onClick={() => handleChatSend(chip)}
-                              className="px-3 py-1.5 rounded-full text-[11px] border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors">
-                              {chip}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {chatMessages.map((msg, idx) => (
-                      <div key={idx} className={`mb-3 flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                        {msg.role === "user" ? (
-                          <div className="max-w-[85%] rounded-xl px-3 py-2 bg-emerald-500 text-white text-[14px] leading-[1.6] whitespace-pre-wrap">
-                            {msg.content}
-                          </div>
-                        ) : (
-                          <div className="max-w-[85%] rounded-xl px-3 py-2 bg-gray-100 text-gray-800 text-[14px] leading-[1.6] chat-markdown">
-                            <ReactMarkdown>{msg.content}</ReactMarkdown>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {generatingItinerary && (
-                      <div className="mb-3 flex justify-start">
-                        <div className="bg-gray-100 rounded-xl px-3 py-2 text-[12px] text-gray-500 flex items-center gap-2">
-                          <div className="flex gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-                            <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-                            <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "300ms" }} />
-                          </div>
-                          Planning your itinerary...
-                        </div>
-                      </div>
-                    )}
-                    <div ref={chatEndRef} />
-                  </div>
-                  <div className="flex gap-2 pt-2 border-t border-gray-100 mt-auto">
-                    <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
-                      placeholder="Describe your dream trip..."
-                      className="flex-1 text-[12px] px-3 py-2 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
-                      onKeyDown={e => e.key === "Enter" && handleChatSend()}
-                      disabled={generatingItinerary} />
-                    <button onClick={() => handleChatSend()} disabled={generatingItinerary || !chatInput.trim()}
-                      className="px-4 py-2 rounded-lg bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                      {generatingItinerary ? "Planning..." : "Send"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                /* Normal itinerary view */
-                <>
-                  {/* Day narrative — colored container with day tint */}
-                  {days[activeDay]?.narrative && (() => {
-                    const dayColor = getDayColor(activeDay);
-                    // Convert hsl(H, S%, L%) to hsla for background tint
-                    const bgColor = dayColor.replace("hsl(", "hsla(").replace(")", ", 0.12)");
-                    const borderColor = dayColor.replace("hsl(", "hsla(").replace(")", ", 0.25)");
-                    return (
-                      <div className="mb-3 rounded-lg px-4 py-3.5 border" style={{ backgroundColor: bgColor, borderColor }}>
-                        <p className="text-[14px] leading-relaxed text-gray-800" style={{ fontWeight: 500 }}>{days[activeDay].narrative}</p>
-                      </div>
-                    );
-                  })()}
-                  {currentDayStops.length === 0 && (
-                    <div className="text-center py-10"><p className="text-gray-400 text-sm mb-2">No stops on this day yet</p></div>
-                  )}
-                  {/* Tile grid with transit rows breaking the grid */}
-                  {(() => {
-                    const activeDayColor = getDayColor(activeDay);
-                    // Split stops into segments: groups of non-transit stops separated by transit stops
-                    const segments: { type: "tiles"; stops: Stop[] }[] | { type: "transit"; stop: Stop }[] = [];
-                    let currentTiles: Stop[] = [];
-                    const result: ({ type: "tiles"; stops: Stop[] } | { type: "transit"; stop: Stop })[] = [];
-                    for (const stop of currentDayStops) {
-                      if (stop.stop_type === "transit") {
-                        if (currentTiles.length > 0) { result.push({ type: "tiles", stops: [...currentTiles] }); currentTiles = []; }
-                        result.push({ type: "transit", stop });
-                      } else {
-                        currentTiles.push(stop);
-                      }
-                    }
-                    if (currentTiles.length > 0) result.push({ type: "tiles", stops: currentTiles });
-
-                    return result.map((segment, segIdx) => {
-                      if (segment.type === "transit") {
-                        const stop = segment.stop;
-                        const durationHrs = stop.duration_minutes >= 60
-                          ? `${(stop.duration_minutes / 60).toFixed(stop.duration_minutes % 60 === 0 ? 0 : 1)} hrs`
-                          : `${stop.duration_minutes} min`;
-                        return (
-                          <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }} className="flex items-center gap-2.5 py-2.5 px-2 my-1">
-                            <div className="flex-1 h-px" style={{ backgroundColor: activeDayColor, opacity: 0.25 }} />
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              <span className="text-[13px]">{stop.name.toLowerCase().includes("train") || stop.name.toLowerCase().includes("rail") ? "\uD83D\uDE86" : stop.name.toLowerCase().includes("fly") || stop.name.toLowerCase().includes("flight") ? "\u2708\uFE0F" : stop.name.toLowerCase().includes("ferry") || stop.name.toLowerCase().includes("boat") ? "\u26F4\uFE0F" : "\uD83D\uDE97"}</span>
-                              <span className="text-[11px] font-medium text-gray-600">{stop.name}</span>
-                              <span className="text-[10px] text-gray-400">&middot; {durationHrs}</span>
-                              {stop.start_time && <span className="text-[10px] text-gray-400">&middot; {formatTime12(stop.start_time)}</span>}
-                              {stop.description && <span className="text-[10px] text-gray-400 hidden sm:inline">&middot; {stop.description.length > 50 ? stop.description.slice(0, 50) + "..." : stop.description}</span>}
-                            </div>
-                            <div className="flex-1 h-px" style={{ backgroundColor: activeDayColor, opacity: 0.25 }} />
-                          </div>
-                        );
-                      }
-
-                      // Tile grid segment
-                      return (
-                        <div key={`seg-${segIdx}`} className="flex flex-wrap gap-2.5 mb-1">
-                          {segment.stops.map(stop => {
-                            const stopVotes = votes.filter(v => v.stop_id === stop.id);
-                            const upVotes = stopVotes.filter(v => v.vote === 1);
-                            const badge = getStopBadge(stop);
-
-                            const isSelected = expandedStop === stop.id;
-                            return (
-                              <div key={stop.id} ref={el => { if (el) stopRefs.current.set(stop.id, el); }}
-                                className={`bg-white rounded-xl border-2 transition-all overflow-hidden flex flex-col ${isSelected ? "shadow-md" : "hover:shadow-sm"}`}
-                                style={{ width: "calc(50% - 5px)", minWidth: 220, maxWidth: 286, height: 338, borderColor: isSelected ? activeDayColor : "#f3f4f6" }}
-                                onClick={(e) => { e.stopPropagation(); setExpandedStop(stop.id); triggerPulse(stop.id); }}>
-                                {/* Color bar top */}
-                                <div className="h-2 w-full flex-shrink-0" style={{ backgroundColor: activeDayColor }} />
-                                <div className="px-3.5 py-3 flex flex-col flex-1 min-h-0">
-                                  <div className="flex items-start justify-between gap-1 mb-1.5">
-                                    <span className="font-semibold text-[14px] text-gray-900 leading-tight line-clamp-2">{stop.name}</span>
-                                    {badge && <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${badge.bg} ${badge.text} flex-shrink-0 mt-0.5`}>{badge.label}</span>}
-                                  </div>
-                                  <div className="text-[11px] text-gray-500 mb-2 flex-shrink-0">
-                                    {formatTime12(stop.start_time)} · {stop.duration_minutes} min
-                                    {stop.cost_estimate != null && Number(stop.cost_estimate) > 0 && ` · $${Number(stop.cost_estimate).toFixed(0)}`}
-                                  </div>
-                                  {stop.description && (
-                                    <p className="text-[11px] text-gray-500 leading-relaxed line-clamp-7 flex-1 min-h-0">{stop.description}</p>
-                                  )}
-                                  {/* Vote avatars at bottom */}
-                                  <div className="flex gap-0.5 mt-auto pt-2 flex-shrink-0">
-                                    {members.map(m => {
-                                      const hasVoted = upVotes.some(v => v.member_id === m.id);
-                                      return <div key={m.id} className="w-[18px] h-[18px] rounded-full flex items-center justify-center text-[7px] font-semibold"
-                                        style={hasVoted ? { backgroundColor: m.avatar_color, color: "white" } : { border: "1.5px dashed #d1d1d1", color: "#999" }}>{m.avatar_initial}</div>;
-                                    })}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    });
-                  })()}
-                  {!showAddStop && (
-                    <button onClick={() => setShowAddStop(true)} className="w-full border border-dashed border-gray-200 rounded-lg py-2 text-center cursor-pointer hover:border-emerald-400 hover:text-emerald-600 transition-colors mt-1">
-                      <span className="text-gray-400 text-[11px] hover:text-emerald-600">+ Add stop</span>
-                    </button>
-                  )}
-                  {showAddStop && days[activeDay] && (
-                    <div className="border border-gray-200 rounded-lg p-3 mt-1 bg-gray-50/50">
-                      <div className="text-[12px] font-medium text-gray-700 mb-2">New stop for Day {days[activeDay].day_number}</div>
-                      <div className="space-y-2">
-                        <input type="text" value={newStop.name} onChange={e => setNewStop(s => ({ ...s, name: e.target.value }))} placeholder="Stop name *" autoFocus
-                          className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
-                        <input type="text" value={newStop.description} onChange={e => setNewStop(s => ({ ...s, description: e.target.value }))} placeholder="Description (optional)"
-                          className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
-                        <div className="flex gap-2">
-                          <input type="time" value={newStop.start_time} onChange={e => setNewStop(s => ({ ...s, start_time: e.target.value }))}
-                            className="flex-1 text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
-                          <div className="flex items-center gap-1 flex-1">
-                            <input type="number" value={newStop.duration_minutes} onChange={e => setNewStop(s => ({ ...s, duration_minutes: parseInt(e.target.value) || 0 }))} min="0"
-                              className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
-                            <span className="text-[10px] text-gray-400 whitespace-nowrap">min</span>
-                          </div>
-                          <div className="flex items-center gap-1 flex-1">
-                            <span className="text-[10px] text-gray-400">$</span>
-                            <input type="number" value={newStop.cost_estimate} onChange={e => setNewStop(s => ({ ...s, cost_estimate: e.target.value }))} placeholder="Cost" min="0" step="0.01"
-                              className="w-full text-[12px] px-3 py-1.5 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400" />
-                          </div>
-                        </div>
-                        <div className="flex gap-2 pt-1">
-                          <button onClick={handleAddStop} disabled={addingStop || !newStop.name.trim()}
-                            className="px-4 py-1.5 rounded-lg bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                            {addingStop ? "Adding..." : "Add Stop"}
-                          </button>
-                          <button onClick={() => { setShowAddStop(false); setNewStop({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "" }); }}
-                            className="px-3 py-1.5 rounded-lg text-gray-400 text-[11px] hover:text-gray-600 transition-colors">Cancel</button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div className="flex items-center gap-1 px-3 py-2 border-t border-gray-100 flex-shrink-0">
-              {members.map(m => (
-                <div key={m.id} className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[9px] font-semibold relative" style={{ backgroundColor: m.avatar_color }} title={m.display_name}>
-                  {m.avatar_initial}
-                  {m.is_online && <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-white" />}
-                </div>
-              ))}
-              <span className="text-[10px] text-gray-400 ml-2">{onlineMembers.length} online</span>
-            </div>
-          </div>
-
-          {/* Right panel — Map + Claude */}
-          <div className="hidden md:flex md:w-[45%] flex-col overflow-hidden">
-            {/* Route strip — multi-city only, above regional map */}
-            {multiCity && routeCities.length >= 2 && stopsWithCoords.length > 0 && (
-              <div className="px-3 py-2 border-b border-gray-100 bg-white flex-shrink-0 text-center">
-                <div className="text-[14px] font-medium text-gray-600 flex items-center justify-center gap-1 flex-wrap">
-                  {routeCities.map((city, i) => {
-                    const isActiveCity = i === activeCityIndex;
-                    const activeDayColor = dayColors[activeDay] || "#1D9E75";
-                    return (
-                      <span key={`${city.name}-${i}`} className="whitespace-nowrap">
-                        {i > 0 && <span className="text-gray-300 mx-1">{"\u2192"}</span>}
-                        <span style={{
-                          fontWeight: isActiveCity ? 700 : 500,
-                          color: isActiveCity ? activeDayColor : undefined,
-                        }}>{city.name}</span>
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {/* Regional map strip — multi-city only */}
-            {multiCity && routeCities.length >= 2 && stopsWithCoords.length > 0 && (
-              <RegionalMap
-                routeCities={routeCities}
-                activeCityIndex={activeCityIndex}
-                activeDayColor={dayColors[activeDay] || "#1D9E75"}
-                onSelectDay={setActiveDay}
-              />
-            )}
-            {/* Separator between regional map and day map */}
-            {multiCity && routeCities.length >= 2 && stopsWithCoords.length > 0 && (
-              <div className="h-3 bg-gray-100 border-y border-gray-200 shrink-0" />
-            )}
-            <div className="flex-1 relative">
-              {stopsWithCoords.length > 0 ? (
-                <>
-                  <TripMap
-                    stops={stops}
-                    days={days}
-                    activeDay={activeDay}
-                    dayColors={dayColors}
-                    pulsingStop={pulsingStop}
-                    selectedStop={expandedStop}
-                    onPinClick={handleMapPinClick}
-                  />
-                </>
-              ) : (
-                <div className="flex-1 h-full bg-gray-100 flex items-center justify-center">
-                  <div className="text-center">
-                    <svg className="w-10 h-10 text-gray-300 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z" /></svg>
-                    <p className="text-gray-400 text-xs">Add stops with coordinates to see the map</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="border-t-2 border-gray-200 bg-gray-50/50 flex flex-col flex-shrink-0" style={{ maxHeight: chatMessages.length > 0 ? "45%" : "auto" }}>
-              <div className="flex items-center gap-2 px-4 pt-4 pb-1">
-                <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" strokeWidth="2"><rect x="3" y="4" width="18" height="14" rx="3" /><path d="M7 10h10" strokeLinecap="round" /></svg>
-                </div>
-                <span className="text-[13px] font-medium text-gray-700">Claude</span>
-                <span className="text-[11px] text-gray-500">{generatingItinerary ? "· Thinking..." : "· Ready"}</span>
-              </div>
-              {/* Chat messages */}
-              {chatMessages.length > 0 && (
-                <div className="flex-1 overflow-y-auto px-4 py-3 min-h-0">
-                  {chatMessages.map((msg, idx) => (
-                    <div key={idx} className={`mb-3 flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                      {msg.role === "user" ? (
-                        <div className="max-w-[85%] rounded-lg px-3 py-2 bg-emerald-500 text-white text-[14px] leading-[1.6] whitespace-pre-wrap">
-                          {msg.content}
-                        </div>
-                      ) : (
-                        <div className="max-w-[85%] rounded-lg px-3 py-2 bg-gray-100 text-gray-800 text-[14px] leading-[1.6] chat-markdown">
-                          <ReactMarkdown>{msg.content}</ReactMarkdown>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {generatingItinerary && (
-                    <div className="mb-3 flex justify-start">
-                      <div className="bg-gray-100 rounded-lg px-3 py-2 text-[13px] text-gray-500 flex items-center gap-1.5">
-                        <div className="flex gap-0.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: "300ms" }} />
-                        </div>
-                        Thinking...
-                      </div>
-                    </div>
-                  )}
-                  <div ref={chatEndRef} />
-                </div>
-              )}
-              {/* Dynamic prompt chips */}
-              {chatMessages.length === 0 && (
-                <div className="flex flex-wrap gap-1.5 px-4 py-2">
-                  {getPromptChips(trip).map(chip => (
-                    <button key={chip} onClick={() => handleChatSend(chip)}
-                      className="px-2.5 py-1 rounded-full text-[11px] border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
-                      disabled={generatingItinerary}>
-                      {chip}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div className="flex gap-2 px-4 pb-4 pt-2">
-                <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
-                  placeholder="Ask about your trip..."
-                  className="flex-1 text-[14px] px-4 py-3 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200"
-                  onKeyDown={e => e.key === "Enter" && handleChatSend()}
-                  disabled={generatingItinerary} />
-                <button onClick={() => handleChatSend()} disabled={generatingItinerary || !chatInput.trim()}
-                  className="px-4 py-3 rounded-lg bg-emerald-100 text-emerald-700 text-[13px] font-medium hover:bg-emerald-200 transition-colors disabled:opacity-50">
-                  {generatingItinerary ? "..." : "Send"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Mobile bottom tabs */}
-        <div className="md:hidden flex border-t border-gray-100 bg-white flex-shrink-0 safe-area-bottom">
-          {(["Plan", "Map", "Claude", "Votes", "Journal"] as const).map((label, i) => {
-            const ids: ViewId[] = ["itinerary", "map", "ai", "votes", "journal"];
-            return <button key={label} onClick={() => setActiveView(ids[i])} className={`flex-1 py-2 text-[10px] font-medium transition-colors ${activeView === ids[i] ? "text-emerald-600" : "text-gray-400"}`}>{label}</button>;
-          })}
-        </div>
-      </div>
-    </div>
+      <TripLayout
+        trip={trip}
+        days={days}
+        activeDay={activeDay}
+        dayColors={dayColors}
+        members={members}
+        stops={stops}
+        onSelectDay={setActiveDay}
+        onAddDay={() => setShowAddDay(true)}
+        trips={allTrips.map(item => item.trip)}
+        onNewTrip={() => router.push("/")}
+        onSwitchTrip={(id) => router.push(`/trip/${id}`)}
+        renderLeftPanel={renderLeftPanel}
+        renderChat={renderChat}
+        renderRightPanel={renderRightPanel}
+      />
+    </>
   );
 }
