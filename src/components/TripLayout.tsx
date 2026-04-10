@@ -132,45 +132,51 @@ export default function TripLayout({
           </div>
         </div>
 
-        {/* Padded panel container */}
+        {/* Padded panel container — three equal-width panels with even gaps */}
         <div
           className="flex flex-1 min-w-0 min-h-0"
-          style={{ paddingLeft: 12, paddingRight: 12 }}
+          style={{ padding: 12, gap: 12 }}
         >
           {/* Left panel — stops */}
           <div
-            className="flex-shrink-0 flex flex-col overflow-y-auto bg-white"
-            style={{ width: 280, borderRight: `0.5px solid ${BORDER}` }}
+            className="flex flex-col overflow-y-auto bg-white"
+            style={{
+              flex: "1 1 0",
+              minWidth: 0,
+              borderRadius: 8,
+              border: `0.5px solid ${BORDER}`,
+            }}
           >
-            <div className="flex flex-col flex-1" style={{ paddingLeft: 12, paddingRight: 12 }}>
-              {renderLeftPanel()}
-            </div>
+            {renderLeftPanel()}
           </div>
 
           {/* Center — chat */}
-          <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white">
+          <div
+            className="flex flex-col min-h-0 bg-white"
+            style={{
+              flex: "1 1 0",
+              minWidth: 0,
+              borderRadius: 8,
+              border: `0.5px solid ${BORDER}`,
+              overflow: "hidden",
+            }}
+          >
             {renderChatOverlay && renderChatOverlay()}
-            <div
-              className="flex-1 flex flex-col min-h-0 w-full"
-              style={{ maxWidth: 640, marginLeft: "auto", marginRight: "auto" }}
-            >
-              {renderChat()}
-            </div>
+            {renderChat()}
           </div>
 
           {/* Right panel — map */}
           <div
-            className="flex-shrink-0 flex flex-col bg-white"
-            style={{ width: 320, borderLeft: `0.5px solid ${BORDER}` }}
+            className="flex flex-col min-h-0 bg-white"
+            style={{
+              flex: "1 1 0",
+              minWidth: 0,
+              borderRadius: 8,
+              border: `0.5px solid ${BORDER}`,
+              overflow: "hidden",
+            }}
           >
-            <div className="flex flex-col flex-1 min-h-0" style={{ padding: 12 }}>
-              <div
-                className="flex flex-col flex-1 min-h-0 overflow-hidden"
-                style={{ borderRadius: 8, border: `0.5px solid ${BORDER}` }}
-              >
-                {renderRightPanel()}
-              </div>
-            </div>
+            {renderRightPanel()}
           </div>
         </div>
 
