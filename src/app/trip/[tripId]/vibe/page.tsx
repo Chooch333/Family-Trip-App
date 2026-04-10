@@ -83,11 +83,19 @@ function formatTime12(time: string | null): string {
 const LOCKED_PREFIX = "__LOCKED__:";
 
 function SortableStopRow({ stop, dayColor, isHighlighted, onClick }: { stop: VibeStop; dayColor: string; isHighlighted: boolean; onClick: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: stop.id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: stop.id });
+  const style: React.CSSProperties = {
+    transform: isDragging
+      ? `${CSS.Transform.toString(transform) || ""} scale(1.02)`
+      : CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.8 : 1,
+    border: isDragging ? "1.5px solid #534AB7" : "1.5px solid transparent",
+    borderRadius: isDragging ? 6 : 0,
+    backgroundColor: isDragging ? "white" : undefined,
+    boxShadow: isDragging ? "0 4px 12px rgba(83, 74, 183, 0.18)" : undefined,
+    zIndex: isDragging ? 10 : undefined,
+    position: "relative",
   };
   return (
     <div
@@ -96,9 +104,15 @@ function SortableStopRow({ stop, dayColor, isHighlighted, onClick }: { stop: Vib
       onClick={onClick}
       className="flex items-stretch border-b border-gray-100 cursor-pointer transition-colors"
     >
+      {isOver && !isDragging && (
+        <div
+          className="absolute left-0 right-0 pointer-events-none"
+          style={{ top: -1, height: 2, backgroundColor: "#534AB7", zIndex: 5 }}
+        />
+      )}
       <div
-        className="flex-shrink-0 cursor-grab active:cursor-grabbing flex items-center justify-center text-gray-300 hover:text-gray-500"
-        style={{ width: 18 }}
+        className="flex-shrink-0 flex items-center justify-center text-gray-300 hover:text-gray-500"
+        style={{ width: 18, cursor: isDragging ? "grabbing" : "grab" }}
         {...attributes}
         {...listeners}
         onClick={(e) => e.stopPropagation()}

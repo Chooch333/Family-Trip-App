@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { getMemberForTrip, getSessionTokens } from "@/lib/session";
@@ -8,6 +8,12 @@ import { askClaude, executeToolCall, getPromptChips } from "@/lib/claude";
 import TripLayout from "@/components/TripLayout";
 import ReactMarkdown from "react-markdown";
 import type { Trip, TripMember, Day, Stop, Vote, Proposal } from "@/lib/database.types";
+import {
+  DndContext, DragEndEvent, DragStartEvent,
+  PointerSensor, useSensor, useSensors, closestCenter,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface TripSwitcherItem {
   trip: Trip;
@@ -201,6 +207,79 @@ function isMultiCityTrip(stops: Stop[]): boolean {
     }
   }
   return maxDist > 50;
+}
+
+function SortableStopRow({
+  stop,
+  dayColor,
+  isSelected,
+  onClick,
+  refSetter,
+}: {
+  stop: Stop;
+  dayColor: string;
+  isSelected: boolean;
+  onClick: () => void;
+  refSetter: (el: HTMLDivElement | null) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: stop.id });
+  const style: React.CSSProperties = {
+    transform: isDragging
+      ? `${CSS.Transform.toString(transform) || ""} scale(1.02)`
+      : CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.8 : 1,
+    border: isDragging ? "1.5px solid #534AB7" : "1.5px solid transparent",
+    borderRadius: isDragging ? 6 : 0,
+    backgroundColor: isDragging ? "white" : (isSelected ? "#f9fafb" : "transparent"),
+    boxShadow: isDragging ? "0 4px 12px rgba(83, 74, 183, 0.18)" : undefined,
+    zIndex: isDragging ? 10 : undefined,
+    position: "relative",
+    borderBottomWidth: isDragging ? undefined : 0.5,
+  };
+  return (
+    <div
+      ref={(el) => {
+        setNodeRef(el);
+        refSetter(el);
+      }}
+      onClick={onClick}
+      className="flex items-stretch border-b border-gray-100 cursor-pointer transition-colors"
+      style={style}
+    >
+      {isOver && !isDragging && (
+        <div
+          className="absolute left-0 right-0 pointer-events-none"
+          style={{ top: -1, height: 2, backgroundColor: "#534AB7", zIndex: 5 }}
+        />
+      )}
+      <div
+        className="flex-shrink-0 flex items-center justify-center text-gray-300 hover:text-gray-500"
+        style={{ width: 18, cursor: isDragging ? "grabbing" : "grab" }}
+        {...attributes}
+        {...listeners}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor">
+          <circle cx="2" cy="2" r="1.2" /><circle cx="6" cy="2" r="1.2" />
+          <circle cx="2" cy="7" r="1.2" /><circle cx="6" cy="7" r="1.2" />
+          <circle cx="2" cy="12" r="1.2" /><circle cx="6" cy="12" r="1.2" />
+        </svg>
+      </div>
+      <div className="flex-shrink-0" style={{ width: 4, backgroundColor: dayColor }} />
+      <div className="flex-1 min-w-0 px-3 py-2.5 flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="text-[12px] font-medium text-gray-900 truncate leading-tight">{stop.name}</div>
+          <div className="text-[10px] text-gray-500 mt-0.5 truncate">
+            {stop.stop_type} · {stop.duration_minutes} min
+          </div>
+        </div>
+        {stop.start_time && (
+          <div className="text-[10px] text-gray-400 whitespace-nowrap pt-0.5">{formatTime12(stop.start_time)}</div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function TripDashboard() {
@@ -512,6 +591,35 @@ Rules:
     triggerPulse(stop.id);
   }
 
+  // Drag-and-drop reordering for the active day's non-transit stops
+  const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  function handleDragStart(_e: DragStartEvent) { /* no-op for now */ }
+  async function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const activeDayObj = days[activeDay];
+    if (!activeDayObj) return;
+    const dayStops = stops
+      .filter(s => s.day_id === activeDayObj.id && s.stop_type !== "transit")
+      .sort((a, b) => a.sort_order - b.sort_order);
+    const oldIdx = dayStops.findIndex(s => s.id === active.id);
+    const newIdx = dayStops.findIndex(s => s.id === over.id);
+    if (oldIdx < 0 || newIdx < 0) return;
+    const reordered = [...dayStops];
+    const [moved] = reordered.splice(oldIdx, 1);
+    reordered.splice(newIdx, 0, moved);
+    // Optimistic local update
+    const newOrderById = new Map(reordered.map((s, i) => [s.id, i]));
+    setStops(prev => prev.map(s => {
+      const idx = newOrderById.get(s.id);
+      return idx === undefined ? s : { ...s, sort_order: idx };
+    }));
+    // Persist
+    for (let i = 0; i < reordered.length; i++) {
+      await supabase.from("stops").update({ sort_order: i }).eq("id", reordered[i].id);
+    }
+  }
+
   // Lightbox navigation
   function openLightbox(stop: Stop, photoIndex: number) {
     setLightboxStop(stop);
@@ -754,67 +862,54 @@ Rules:
               <p className="text-gray-400 text-[11px]">No stops on this day yet</p>
             </div>
           )}
-          {currentDayStops.map(stop => {
-            if (stop.stop_type === "transit") {
-              const tname = stop.name.toLowerCase();
-              const icon = tname.includes("train") || tname.includes("rail") ? "🚆"
-                : tname.includes("fly") || tname.includes("flight") ? "✈️"
-                : tname.includes("ferry") || tname.includes("boat") ? "⛴️"
-                : "🚗";
-              const dur = stop.duration_minutes >= 60
-                ? `${(stop.duration_minutes / 60).toFixed(stop.duration_minutes % 60 === 0 ? 0 : 1)}h`
-                : `${stop.duration_minutes}m`;
-              return (
-                <div
-                  key={stop.id}
-                  ref={el => { if (el) stopRefs.current.set(stop.id, el); }}
-                  className="flex items-center gap-2 px-3 py-2"
-                >
-                  <div className="flex-1 h-px" style={{ backgroundColor: dayColor, opacity: 0.25 }} />
-                  <span className="text-[11px]">{icon}</span>
-                  <span className="text-[10px] font-medium text-gray-600 truncate">{stop.name}</span>
-                  <span className="text-[10px] text-gray-400 flex-shrink-0">· {dur}</span>
-                  <div className="flex-1 h-px" style={{ backgroundColor: dayColor, opacity: 0.25 }} />
-                </div>
-              );
-            }
-            const isSelected = expandedStop === stop.id;
-            return (
-              <div
-                key={stop.id}
-                ref={el => { if (el) stopRefs.current.set(stop.id, el); }}
-                onClick={(e) => { e.stopPropagation(); handleStopCardClick(stop); }}
-                className="flex items-stretch border-b border-gray-100 cursor-pointer transition-colors"
-                style={{
-                  backgroundColor: isSelected ? "#f9fafb" : "transparent",
-                  borderBottomWidth: 0.5,
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = "#fafafa";
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                }}
-              >
-                <div className="flex-shrink-0" style={{ width: 4, backgroundColor: dayColor }} />
-                <div className="flex-1 min-w-0 px-3 py-2.5 flex items-start gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-medium text-gray-900 truncate leading-tight">
-                      {stop.name}
+          <DndContext
+            sensors={dndSensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={currentDayStops.filter(s => s.stop_type !== "transit").map(s => s.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {currentDayStops.map(stop => {
+                if (stop.stop_type === "transit") {
+                  const tname = stop.name.toLowerCase();
+                  const icon = tname.includes("train") || tname.includes("rail") ? "🚆"
+                    : tname.includes("fly") || tname.includes("flight") ? "✈️"
+                    : tname.includes("ferry") || tname.includes("boat") ? "⛴️"
+                    : "🚗";
+                  const dur = stop.duration_minutes >= 60
+                    ? `${(stop.duration_minutes / 60).toFixed(stop.duration_minutes % 60 === 0 ? 0 : 1)}h`
+                    : `${stop.duration_minutes}m`;
+                  return (
+                    <div
+                      key={stop.id}
+                      ref={el => { if (el) stopRefs.current.set(stop.id, el); }}
+                      className="flex items-center gap-2 px-3 py-2"
+                    >
+                      <div className="flex-1 h-px" style={{ backgroundColor: dayColor, opacity: 0.25 }} />
+                      <span className="text-[11px]">{icon}</span>
+                      <span className="text-[10px] font-medium text-gray-600 truncate">{stop.name}</span>
+                      <span className="text-[10px] text-gray-400 flex-shrink-0">· {dur}</span>
+                      <div className="flex-1 h-px" style={{ backgroundColor: dayColor, opacity: 0.25 }} />
                     </div>
-                    <div className="text-[10px] text-gray-500 mt-0.5 truncate">
-                      {stop.stop_type} · {stop.duration_minutes} min
-                    </div>
-                  </div>
-                  {stop.start_time && (
-                    <div className="text-[10px] text-gray-400 whitespace-nowrap pt-0.5">
-                      {formatTime12(stop.start_time)}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                  );
+                }
+                const isSelected = expandedStop === stop.id;
+                return (
+                  <SortableStopRow
+                    key={stop.id}
+                    stop={stop}
+                    dayColor={dayColor}
+                    isSelected={isSelected}
+                    onClick={() => { handleStopCardClick(stop); }}
+                    refSetter={(el) => { if (el) stopRefs.current.set(stop.id, el); }}
+                  />
+                );
+              })}
+            </SortableContext>
+          </DndContext>
         </div>
 
         {showAddStop && activeDayObj && (
