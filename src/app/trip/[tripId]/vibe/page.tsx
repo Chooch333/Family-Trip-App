@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { getMemberForTrip } from "@/lib/session";
@@ -10,7 +10,7 @@ import TripLayout from "@/components/TripLayout";
 import type { Trip, TripMember, Day, Stop } from "@/lib/database.types";
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
-  PointerSensor, useSensor, useSensors, closestCenter,
+  PointerSensor, useSensor, useSensors, closestCenter, useDroppable,
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -82,14 +82,28 @@ function formatTime12(time: string | null): string {
 
 const LOCKED_PREFIX = "__LOCKED__:";
 
-function SortableStopRow({ stop, dayColor, isHighlighted, onClick }: { stop: VibeStop; dayColor: string; isHighlighted: boolean; onClick: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: stop.id });
+interface StopRowProps {
+  sortableId: string;
+  name: string;
+  stopType?: string | null;
+  durationMinutes?: number;
+  startTime?: string | null;
+  dayColor: string;
+  isHighlighted?: boolean;
+  isAdded?: boolean;
+  compact?: boolean;
+  showTime?: boolean;
+  onClick?: () => void;
+}
+
+function SortableStopRow(props: StopRowProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: props.sortableId });
   const style: React.CSSProperties = {
     transform: isDragging
       ? `${CSS.Transform.toString(transform) || ""} scale(1.02)`
       : CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.8 : 1,
+    opacity: isDragging ? 0.8 : (props.isAdded ? 0.45 : 1),
     border: isDragging ? "1.5px solid #534AB7" : "1.5px solid transparent",
     borderRadius: isDragging ? 6 : 0,
     backgroundColor: isDragging ? "white" : undefined,
@@ -97,11 +111,12 @@ function SortableStopRow({ stop, dayColor, isHighlighted, onClick }: { stop: Vib
     zIndex: isDragging ? 10 : undefined,
     position: "relative",
   };
+  const padClass = props.compact ? "py-1.5" : "py-2.5";
   return (
     <div
       ref={setNodeRef}
       style={style}
-      onClick={onClick}
+      onClick={props.onClick}
       className="flex items-stretch border-b border-gray-100 cursor-pointer transition-colors"
     >
       {isOver && !isDragging && (
@@ -123,34 +138,109 @@ function SortableStopRow({ stop, dayColor, isHighlighted, onClick }: { stop: Vib
           <circle cx="2" cy="12" r="1.2" /><circle cx="6" cy="12" r="1.2" />
         </svg>
       </div>
-      <div className="flex-shrink-0" style={{ width: 4, backgroundColor: dayColor }} />
+      <div className="flex-shrink-0" style={{ width: 4, backgroundColor: props.dayColor }} />
       <div
-        className="flex-1 min-w-0 px-3 py-2.5 flex items-start gap-2"
-        style={{ backgroundColor: isHighlighted ? "#f9fafb" : "transparent" }}
+        className={`flex-1 min-w-0 px-3 ${padClass} flex items-start gap-2`}
+        style={{ backgroundColor: props.isHighlighted ? "#f9fafb" : "transparent" }}
       >
         <div className="flex-1 min-w-0">
-          <div className="text-[12px] font-medium text-gray-900 truncate leading-tight">{stop.name}</div>
+          <div className="text-[12px] font-medium text-gray-900 truncate leading-tight">{props.name}</div>
           <div className="text-[10px] text-gray-500 mt-0.5 truncate">
-            {stop.stop_type} · {stop.duration_minutes} min
+            {props.stopType || "visit"} · {props.durationMinutes || 60} min
+            {props.isAdded && <span className="ml-1.5 text-emerald-600 font-semibold">· Added</span>}
           </div>
         </div>
-        {stop.start_time && (
-          <div className="text-[10px] text-gray-400 whitespace-nowrap pt-0.5">{formatTime12(stop.start_time)}</div>
+        {props.showTime && props.startTime && (
+          <div className="text-[10px] text-gray-400 whitespace-nowrap pt-0.5">{formatTime12(props.startTime)}</div>
         )}
       </div>
     </div>
   );
 }
 
-function DragOverlayRow({ stop, dayColor }: { stop: VibeStop; dayColor: string }) {
+function StopRowOverlay({
+  name,
+  stopType,
+  durationMinutes,
+  dayColor,
+  compact,
+}: {
+  name: string;
+  stopType?: string | null;
+  durationMinutes?: number;
+  dayColor: string;
+  compact?: boolean;
+}) {
+  const padClass = compact ? "py-1.5" : "py-2.5";
   return (
-    <div className="flex items-stretch border border-gray-200 rounded-md bg-white shadow-lg" style={{ width: 260 }}>
+    <div
+      className="flex items-stretch bg-white"
+      style={{
+        width: 280,
+        borderRadius: 6,
+        border: "1.5px solid #534AB7",
+        boxShadow: "0 6px 16px rgba(83,74,183,0.25)",
+        opacity: 0.95,
+      }}
+    >
+      <div className="flex-shrink-0 flex items-center justify-center text-gray-400" style={{ width: 18 }}>
+        <svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor">
+          <circle cx="2" cy="2" r="1.2" /><circle cx="6" cy="2" r="1.2" />
+          <circle cx="2" cy="7" r="1.2" /><circle cx="6" cy="7" r="1.2" />
+          <circle cx="2" cy="12" r="1.2" /><circle cx="6" cy="12" r="1.2" />
+        </svg>
+      </div>
       <div className="flex-shrink-0" style={{ width: 4, backgroundColor: dayColor }} />
-      <div className="flex-1 px-3 py-2.5">
-        <div className="text-[12px] font-medium text-gray-900 truncate">{stop.name}</div>
+      <div className={`flex-1 min-w-0 px-3 ${padClass}`}>
+        <div className="text-[12px] font-medium text-gray-900 truncate leading-tight">{name}</div>
+        <div className="text-[10px] text-gray-500 mt-0.5 truncate">{stopType || "visit"} · {durationMinutes || 60} min</div>
       </div>
     </div>
   );
+}
+
+function DroppableZone({
+  id,
+  children,
+  className,
+  style,
+}: {
+  id: string;
+  children: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      className={className}
+      style={{
+        ...style,
+        outline: isOver ? "1.5px solid #534AB7" : "1.5px solid transparent",
+        outlineOffset: -1,
+        borderRadius: 6,
+        transition: "outline-color 0.15s",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+type ParsedDragId =
+  | { type: "day-stop"; id: string }
+  | { type: "option-stop"; optIdx: number; stopIdx: number }
+  | { type: "day-zone" }
+  | { type: "option-zone"; optIdx: number };
+
+function parseDragId(id: string): ParsedDragId {
+  if (id === "day-stops") return { type: "day-zone" };
+  const optZone = id.match(/^option-(\d+)$/);
+  if (optZone) return { type: "option-zone", optIdx: parseInt(optZone[1], 10) };
+  const optStop = id.match(/^opt-(\d+)-(\d+)$/);
+  if (optStop) return { type: "option-stop", optIdx: parseInt(optStop[1], 10), stopIdx: parseInt(optStop[2], 10) };
+  return { type: "day-stop", id };
 }
 
 export default function VibePlanningPage() {
@@ -498,25 +588,100 @@ export default function VibePlanningPage() {
   async function handleDragEnd(e: DragEndEvent) {
     setDragActiveId(null);
     const { active, over } = e;
-    if (!over || active.id === over.id || !currentDay) return;
-    const dayPicks = picksStops;
-    const oldIdx = dayPicks.findIndex(s => s.id === active.id);
-    const newIdx = dayPicks.findIndex(s => s.id === over.id);
-    if (oldIdx < 0 || newIdx < 0) return;
-    const reordered = [...dayPicks];
-    const [moved] = reordered.splice(oldIdx, 1);
-    reordered.splice(newIdx, 0, moved);
-    setStops(prev => prev.map(s => {
-      const idx = reordered.findIndex(r => r.id === s.id);
-      if (idx >= 0) return { ...s, sort_order: idx };
-      return s;
-    }));
-    for (let i = 0; i < reordered.length; i++) {
-      await supabase.from("stops").update({ sort_order: i }).eq("id", reordered[i].id);
+    if (!over || !currentDay) return;
+    const activeParsed = parseDragId(active.id as string);
+    const overParsed = parseDragId(over.id as string);
+
+    // option stop → day-stops zone or any day stop = add to working day
+    if (activeParsed.type === "option-stop" && (overParsed.type === "day-zone" || overParsed.type === "day-stop")) {
+      let insertIdx = picksStops.length;
+      if (overParsed.type === "day-stop") {
+        const idx = picksStops.findIndex(s => s.id === overParsed.id);
+        if (idx >= 0) insertIdx = idx;
+      }
+      await addOptionStopToDay(activeParsed.optIdx, activeParsed.stopIdx, insertIdx);
+      return;
     }
+
+    // day stop → option zone or option stop = remove from working day
+    if (activeParsed.type === "day-stop" && (overParsed.type === "option-zone" || overParsed.type === "option-stop")) {
+      await removeDayStopById(activeParsed.id);
+      return;
+    }
+
+    // day stop → day stop = reorder within day
+    if (activeParsed.type === "day-stop" && overParsed.type === "day-stop" && active.id !== over.id) {
+      const oldIdx = picksStops.findIndex(s => s.id === activeParsed.id);
+      const newIdx = picksStops.findIndex(s => s.id === overParsed.id);
+      if (oldIdx < 0 || newIdx < 0) return;
+      const reordered = [...picksStops];
+      const [moved] = reordered.splice(oldIdx, 1);
+      reordered.splice(newIdx, 0, moved);
+      setStops(prev => prev.map(s => {
+        const idx = reordered.findIndex(r => r.id === s.id);
+        if (idx >= 0) return { ...s, sort_order: idx };
+        return s;
+      }));
+      for (let i = 0; i < reordered.length; i++) {
+        await supabase.from("stops").update({ sort_order: i }).eq("id", reordered[i].id);
+      }
+      return;
+    }
+
+    // option-stop → option-stop or option-zone = no-op (options are read-only)
   }
 
-  const draggedStop = dragActiveId ? stops.find(s => s.id === dragActiveId) : null;
+  async function addOptionStopToDay(optIdx: number, stopIdx: number, insertIdx: number) {
+    if (!currentDay || !optionsData) return;
+    const optStop = optionsData.options[optIdx]?.stops[stopIdx];
+    if (!optStop) return;
+    // Bump sort_order of stops at >= insertIdx
+    for (const s of picksStops) {
+      if (s.sort_order >= insertIdx) {
+        await supabase.from("stops").update({ sort_order: s.sort_order + 1 }).eq("id", s.id);
+      }
+    }
+    await supabase.from("stops").insert({
+      trip_id: tripId,
+      day_id: currentDay.id,
+      name: optStop.name,
+      stop_type: optStop.stop_type || "visit",
+      duration_minutes: optStop.duration_minutes || 60,
+      latitude: optStop.latitude ?? null,
+      longitude: optStop.longitude ?? null,
+      sort_order: insertIdx,
+    });
+    await reloadStops();
+  }
+
+  async function removeDayStopById(stopId: string) {
+    await supabase.from("stops").delete().eq("id", stopId);
+    await reloadStops();
+  }
+
+  // Names of stops already added to the working day, used to mark option rows
+  const addedOptionNames = useMemo(() => {
+    const set = new Set<string>();
+    picksStops.forEach(s => set.add(s.name.toLowerCase().trim()));
+    return set;
+  }, [picksStops]);
+
+  // Look up the dragged item's display info for the DragOverlay
+  const draggedRender = useMemo(() => {
+    if (!dragActiveId) return null;
+    const parsed = parseDragId(dragActiveId);
+    if (parsed.type === "day-stop") {
+      const s = stops.find(x => x.id === parsed.id);
+      if (!s) return null;
+      return { name: s.name, stopType: s.stop_type, durationMinutes: s.duration_minutes, compact: false };
+    }
+    if (parsed.type === "option-stop" && optionsData) {
+      const s = optionsData.options[parsed.optIdx]?.stops[parsed.stopIdx];
+      if (!s) return null;
+      return { name: s.name, stopType: s.stop_type, durationMinutes: s.duration_minutes, compact: true };
+    }
+    return null;
+  }, [dragActiveId, stops, optionsData]);
 
   function toggleCherryPick(key: string) {
     setCherryPicks(prev => {
@@ -706,22 +871,28 @@ export default function VibePlanningPage() {
           )}
         </div>
 
-        <div className="flex flex-col">
-          {picksStops.length === 0 ? (
-            <div className="px-3 py-10 text-center text-gray-400 text-[11px]">No stops yet</div>
-          ) : (
-            <SortableContext items={picksStops.map(s => s.id)} strategy={verticalListSortingStrategy}>
-              {picksStops.map(stop => (
+        <DroppableZone id="day-stops" className="flex flex-col" style={{ minHeight: 60 }}>
+          <SortableContext items={picksStops.map(s => s.id)} strategy={verticalListSortingStrategy}>
+            {picksStops.length === 0 ? (
+              <div className="px-3 py-10 text-center text-gray-400 text-[11px]">Drag a stop here, or no stops yet</div>
+            ) : (
+              picksStops.map(stop => (
                 <SortableStopRow
                   key={stop.id}
-                  stop={stop}
+                  sortableId={stop.id}
+                  name={stop.name}
+                  stopType={stop.stop_type}
+                  durationMinutes={stop.duration_minutes}
+                  startTime={stop.start_time}
                   dayColor={dayColor}
                   isHighlighted={highlightedStopId === stop.id}
+                  showTime
                   onClick={() => highlightStop(stop.id)}
                 />
-              ))}
-            </SortableContext>
-          )}
+              ))
+            )}
+          </SortableContext>
+        </DroppableZone>
 
           {(isCurated || isCollab) && (
             <div className="flex gap-1.5 px-3 py-2.5 flex-shrink-0">
@@ -742,7 +913,6 @@ export default function VibePlanningPage() {
               </button>
             </div>
           )}
-        </div>
 
         {isLocked && (
           <div className="px-3 py-3 mt-auto border-t border-gray-100 flex flex-col gap-2 flex-shrink-0" style={{ borderTopWidth: 0.5 }}>
@@ -977,24 +1147,37 @@ export default function VibePlanningPage() {
                 >
                   {opt.summary}
                 </div>
-                <div className="flex flex-col gap-1 mb-3 flex-1">
-                  {opt.stops.map((s, i) => {
-                    const synthId = `prev-${optIdx}-${i}`;
-                    const isHL = highlightedStopId === synthId && selectedOption === optIdx && !cherryPickMode;
-                    return (
-                      <div
-                        key={i}
-                        onClick={(e) => { e.stopPropagation(); highlightOptionStop(optIdx, i); }}
-                        className="flex items-center gap-2 py-1 px-1.5 rounded cursor-pointer hover:bg-purple-50"
-                        style={{ backgroundColor: isHL ? "#EEEDFE" : "transparent" }}
-                      >
-                        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: dayColor }} />
-                        <span className="text-[13px] text-gray-800 flex-1 min-w-0" style={{ fontWeight: isHL ? 600 : 400, lineHeight: 1.4 }}>{s.name}</span>
-                        <span className="text-[11px] text-gray-400 flex-shrink-0">{s.stop_type || "visit"}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+                <DroppableZone
+                  id={`option-${optIdx}`}
+                  className="flex flex-col mb-3 flex-1"
+                  style={{ minHeight: 60 }}
+                >
+                  <SortableContext
+                    items={opt.stops.map((_, i) => `opt-${optIdx}-${i}`)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {opt.stops.map((s, i) => {
+                      const sortableId = `opt-${optIdx}-${i}`;
+                      const previewId = `prev-${optIdx}-${i}`;
+                      const isHL = highlightedStopId === previewId && selectedOption === optIdx && !cherryPickMode;
+                      const alreadyAdded = addedOptionNames.has(s.name.toLowerCase().trim());
+                      return (
+                        <SortableStopRow
+                          key={sortableId}
+                          sortableId={sortableId}
+                          name={s.name}
+                          stopType={s.stop_type}
+                          durationMinutes={s.duration_minutes}
+                          dayColor={dayColor}
+                          isHighlighted={isHL}
+                          isAdded={alreadyAdded}
+                          compact
+                          onClick={() => highlightOptionStop(optIdx, i)}
+                        />
+                      );
+                    })}
+                  </SortableContext>
+                </DroppableZone>
                 <button
                   onClick={(e) => { e.stopPropagation(); goWithOption(optIdx); }}
                   className="w-full py-2 rounded-lg text-white text-[13px] font-medium"
@@ -1063,7 +1246,17 @@ export default function VibePlanningPage() {
         renderRightPanel={renderRightPanel}
         renderChatOverlay={renderChatOverlay}
       />
-      <DragOverlay>{draggedStop ? <DragOverlayRow stop={draggedStop as VibeStop} dayColor={dayColor} /> : null}</DragOverlay>
+      <DragOverlay>
+        {draggedRender ? (
+          <StopRowOverlay
+            name={draggedRender.name}
+            stopType={draggedRender.stopType}
+            durationMinutes={draggedRender.durationMinutes}
+            dayColor={dayColor}
+            compact={draggedRender.compact}
+          />
+        ) : null}
+      </DragOverlay>
     </DndContext>
   );
 }
