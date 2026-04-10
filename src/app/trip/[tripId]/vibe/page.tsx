@@ -8,6 +8,7 @@ import { askClaude, executeToolCall } from "@/lib/claude";
 import ReactMarkdown from "react-markdown";
 import TripLayout from "@/components/TripLayout";
 import type { Trip, TripMember, Day, Stop } from "@/lib/database.types";
+import { extractRouteCities, isMultiCityTrip, type RouteCity } from "@/lib/routeCities";
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent,
   PointerSensor, useSensor, useSensors, closestCenter, useDroppable,
@@ -20,75 +21,7 @@ const RegionalMap = dynamic(() => import("../RegionalMap"), { ssr: false, loadin
   <div className="w-full bg-gray-100" style={{ height: 209 }} />
 )});
 
-// --- Multi-city detection helpers (parity with dashboard) ---
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-interface RouteCity { name: string; lat: number; lng: number; dayIndices: number[]; }
-interface RouteCityResult { cities: RouteCity[]; dayToCityIndex: Map<number, number>; }
-
-function deriveCityName(clusterStops: Stop[], allStops: Stop[], days: Day[], dayIdxMap: Map<string, number>): string {
-  if (clusterStops.length === 0) return "";
-  const firstDay = days[dayIdxMap.get(clusterStops[0].day_id) ?? 0];
-  if (firstDay?.title) return firstDay.title;
-  const stopName = clusterStops[0].name;
-  return stopName.split(/[,\-–]/).map(s => s.trim())[0] || stopName;
-}
-
-function extractRouteCities(stops: Stop[], days: Day[]): RouteCityResult {
-  const dayIdxMap = new Map<string, number>();
-  days.forEach((d, i) => dayIdxMap.set(d.id, i));
-  const ordered = stops
-    .filter(s => s.latitude != null && s.longitude != null && s.stop_type !== "transit")
-    .sort((a, b) => {
-      const da = dayIdxMap.get(a.day_id) ?? 0;
-      const db = dayIdxMap.get(b.day_id) ?? 0;
-      if (da !== db) return da - db;
-      return a.sort_order - b.sort_order;
-    });
-  if (ordered.length === 0) return { cities: [], dayToCityIndex: new Map() };
-  const clusters: Stop[][] = [];
-  let current: Stop[] = [ordered[0]];
-  for (let i = 1; i < ordered.length; i++) {
-    const prev = current[current.length - 1];
-    const next = ordered[i];
-    const dist = haversineKm(prev.latitude!, prev.longitude!, next.latitude!, next.longitude!);
-    if (dist > 30) {
-      clusters.push(current);
-      current = [next];
-    } else {
-      current.push(next);
-    }
-  }
-  if (current.length > 0) clusters.push(current);
-  const cities: RouteCity[] = clusters.map(cluster => {
-    const dayIndices = Array.from(new Set(cluster.map(s => dayIdxMap.get(s.day_id) ?? 0)));
-    const lat = cluster.reduce((acc, s) => acc + s.latitude!, 0) / cluster.length;
-    const lng = cluster.reduce((acc, s) => acc + s.longitude!, 0) / cluster.length;
-    return { name: deriveCityName(cluster, stops, days, dayIdxMap), lat, lng, dayIndices };
-  });
-  const dayToCityIndex = new Map<number, number>();
-  cities.forEach((city, ci) => city.dayIndices.forEach(di => dayToCityIndex.set(di, ci)));
-  return { cities, dayToCityIndex };
-}
-
-function isMultiCityTrip(stops: Stop[]): boolean {
-  const coordStops = stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit");
-  if (coordStops.length < 2) return false;
-  let maxDist = 0;
-  for (let i = 0; i < coordStops.length; i++) {
-    for (let j = i + 1; j < coordStops.length; j++) {
-      const d = haversineKm(coordStops[i].latitude!, coordStops[i].longitude!, coordStops[j].latitude!, coordStops[j].longitude!);
-      if (d > maxDist) maxDist = d;
-    }
-  }
-  return maxDist > 50;
-}
+// Multi-city helpers live in src/lib/routeCities.ts and are imported above.
 
 type VibeDay = Day & { vibe_status?: string | null; reasoning?: string | null };
 type VibeTrip = Trip & { trip_summary?: string | null };
