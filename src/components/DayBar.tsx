@@ -88,7 +88,12 @@ export default function DayBar({ days, activeDay, dayColors, onSelectDay, showAd
           return (
             <button
               key={day.id}
-              onClick={() => onSelectDay(idx)}
+              id={`day-pill-${idx}`}
+              onClick={() => {
+                onSelectDay(idx);
+                const pill = document.getElementById(`day-pill-${idx}`);
+                if (pill) pill.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+              }}
               className="rounded-full whitespace-nowrap transition-all flex-shrink-0 font-medium flex items-center gap-1.5"
               style={{
                 backgroundColor: color,
