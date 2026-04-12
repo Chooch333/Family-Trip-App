@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useRef } from "react";
 import type { Day } from "@/lib/database.types";
 
 type VibeDay = Day & { vibe_status?: string | null };
@@ -16,27 +16,6 @@ interface DayBarProps {
 
 export default function DayBar({ days, activeDay, dayColors, onSelectDay, showAddDay, onAddDay, dimmed }: DayBarProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [showLeft, setShowLeft] = useState(false);
-  const [showRight, setShowRight] = useState(false);
-
-  const recalc = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    setShowLeft(el.scrollLeft > 0);
-    setShowRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
-  }, []);
-
-  useEffect(() => {
-    recalc();
-    window.addEventListener("resize", recalc);
-    return () => window.removeEventListener("resize", recalc);
-  }, [recalc, days.length]);
-
-  function scrollByPx(delta: number) {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollBy({ left: delta, behavior: "smooth" });
-  }
 
   return (
     <div
@@ -48,38 +27,9 @@ export default function DayBar({ days, activeDay, dayColors, onSelectDay, showAd
       `}</style>
       <div
         ref={scrollRef}
-        onScroll={recalc}
         className="day-bar-scroll flex gap-2 px-4 py-2.5 overflow-x-auto items-end"
         style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
-        {showLeft && (
-          <button
-            onClick={() => scrollByPx(-240)}
-            aria-label="Scroll days left"
-            className="flex items-center justify-center transition-colors"
-            style={{
-              position: "sticky",
-              left: 0,
-              zIndex: 2,
-              width: 28,
-              alignSelf: "stretch",
-              flexShrink: 0,
-              marginRight: -28,
-              background: "linear-gradient(to right, white 60%, rgba(255,255,255,0))",
-              cursor: "pointer",
-              border: "none",
-              padding: 0,
-              fontSize: 14,
-              fontWeight: 500,
-              color: "#6b7280",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#111827"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#6b7280"; }}
-          >
-            ‹
-          </button>
-        )}
-
         {days.map((day, idx) => {
           const isActive = idx === activeDay;
           const color = dayColors[idx] || "hsl(145, 55%, 33%)";
@@ -123,33 +73,6 @@ export default function DayBar({ days, activeDay, dayColors, onSelectDay, showAd
           </button>
         )}
 
-        {showRight && (
-          <button
-            onClick={() => scrollByPx(240)}
-            aria-label="Scroll days right"
-            className="flex items-center justify-center transition-colors"
-            style={{
-              position: "sticky",
-              right: 0,
-              zIndex: 2,
-              width: 28,
-              alignSelf: "stretch",
-              flexShrink: 0,
-              marginLeft: -28,
-              background: "linear-gradient(to left, white 60%, rgba(255,255,255,0))",
-              cursor: "pointer",
-              border: "none",
-              padding: 0,
-              fontSize: 14,
-              fontWeight: 500,
-              color: "#6b7280",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "#111827"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "#6b7280"; }}
-          >
-            ›
-          </button>
-        )}
       </div>
     </div>
   );
