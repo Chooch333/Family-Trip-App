@@ -88,8 +88,20 @@ export default function HomePage() {
   const [editingTripId, setEditingTripId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
 
+  // Profile step state
+  const [wizProfileId, setWizProfileId] = useState<string | null>(null);
+  const [wizEmail, setWizEmail] = useState("");
+  const [wizEmailLocked, setWizEmailLocked] = useState(false);
+  const [wizFirstName, setWizFirstName] = useState("");
+  const [wizLastName, setWizLastName] = useState("");
+  const [wizEmailSuggestions, setWizEmailSuggestions] = useState<{ id: string; email: string; display_name: string }[]>([]);
+  const [wizShowSuggestions, setWizShowSuggestions] = useState(false);
+  const [wizNameHighlight, setWizNameHighlight] = useState(false);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const firstNameRef = useRef<HTMLInputElement>(null);
+
   // Wizard state
-  const [wizStep, setWizStep] = useState(1);
+  const [wizStep, setWizStep] = useState(0);
   const [wizDest, setWizDest] = useState("");
   const [wizDuration, setWizDuration] = useState("");
   const [wizDurationInput, setWizDurationInput] = useState("");
@@ -109,7 +121,21 @@ export default function HomePage() {
   const destInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { loadTrips(); }, []);
-  useEffect(() => { if (mode === "wizard" && wizStep === 1) setTimeout(() => destInputRef.current?.focus(), 100); }, [mode, wizStep]);
+  useEffect(() => {
+    if (mode === "wizard" && wizStep === 0) setTimeout(() => emailInputRef.current?.focus(), 100);
+    if (mode === "wizard" && wizStep === 1) setTimeout(() => destInputRef.current?.focus(), 100);
+  }, [mode, wizStep]);
+
+  // Email autocomplete search
+  useEffect(() => {
+    if (!wizEmail || wizEmail.length < 2 || wizEmailLocked) { setWizEmailSuggestions([]); return; }
+    const timeout = setTimeout(async () => {
+      const { data } = await supabase.from("profiles").select("id, email, display_name").ilike("email", `%${wizEmail}%`).order("email").limit(5);
+      if (data && data.length > 0) { setWizEmailSuggestions(data); setWizShowSuggestions(true); }
+      else { setWizEmailSuggestions([]); setWizShowSuggestions(false); }
+    }, 200);
+    return () => clearTimeout(timeout);
+  }, [wizEmail, wizEmailLocked]);
 
   async function loadTrips() {
     setLoading(true);
@@ -165,6 +191,62 @@ export default function HomePage() {
     const result = await joinTrip(inviteCode.trim(), joinName.trim());
     if ("error" in result) { setError(result.error); setJoining(false); return; }
     router.push(`/trip/${result.member.trip_id}`);
+  }
+
+  // --- Profile step handlers ---
+  function selectProfileSuggestion(suggestion: { id: string; email: string; display_name: string }) {
+    setWizEmail(suggestion.email);
+    setWizEmailLocked(true);
+    setWizProfileId(suggestion.id);
+    setWizShowSuggestions(false);
+    const parts = suggestion.display_name.split(" ");
+    setWizFirstName(parts[0] || "");
+    setWizLastName(parts.slice(1).join(" ") || "");
+    setWizNameHighlight(true);
+    setTimeout(() => setWizNameHighlight(false), 1000);
+  }
+
+  function handleEmailEnter() {
+    if (!wizEmail.trim()) return;
+    setWizEmailLocked(true);
+    setWizShowSuggestions(false);
+    // Check if typed email exactly matches a suggestion
+    const match = wizEmailSuggestions.find(s => s.email.toLowerCase() === wizEmail.trim().toLowerCase());
+    if (match) {
+      setWizProfileId(match.id);
+      const parts = match.display_name.split(" ");
+      setWizFirstName(parts[0] || "");
+      setWizLastName(parts.slice(1).join(" ") || "");
+      setWizNameHighlight(true);
+      setTimeout(() => setWizNameHighlight(false), 1000);
+    } else {
+      setTimeout(() => firstNameRef.current?.focus(), 100);
+    }
+  }
+
+  async function handleProfileConfirm() {
+    if (!wizEmail.trim() || !wizFirstName.trim()) return;
+    const displayName = `${wizFirstName.trim()}${wizLastName.trim() ? ` ${wizLastName.trim()}` : ""}`;
+
+    if (wizProfileId) {
+      // Existing profile — advance
+      setWizStep(1);
+      return;
+    }
+
+    // New profile — create
+    const avatarColors = ["#5DCAA5", "#85B7EB", "#ED93B1", "#F0997B", "#AFA9EC", "#EF9F27"];
+    const color = avatarColors[Math.floor(Math.random() * avatarColors.length)];
+    const { data, error: insertErr } = await supabase.from("profiles").insert({
+      display_name: displayName,
+      email: wizEmail.trim().toLowerCase(),
+      avatar_color: color,
+      avatar_initial: wizFirstName.trim().charAt(0).toUpperCase(),
+    }).select("id").single();
+
+    if (insertErr || !data) { setError("Failed to create profile. Please try again."); return; }
+    setWizProfileId(data.id);
+    setWizStep(1);
   }
 
   // --- Wizard handlers ---
@@ -223,7 +305,8 @@ export default function HomePage() {
     const cleanDest = cleanDestination(wizDest) || wizDest;
     const tripTitle = `${cleanDest} \u2014 ${durDays}-Day ${wizGroup || "Trip"}${wizGroup === "Family" ? " Trip" : wizGroup === "Friends" ? " Getaway" : wizGroup === "Solo" ? " Adventure" : ""}`;
 
-    const result = await createTrip(tripTitle, "Organizer");
+    const organizerName = wizFirstName.trim() + (wizLastName.trim() ? ` ${wizLastName.trim()}` : "");
+    const result = await createTrip(tripTitle, organizerName || "Organizer", wizProfileId || undefined);
     if ("error" in result) { setError(result.error); setWizGenerating(false); return null; }
 
     await supabase.from("trips").update({
@@ -267,10 +350,12 @@ export default function HomePage() {
   }
 
   function resetWizard() {
-    setWizStep(1); setWizDest(""); setWizDuration(""); setWizDurationInput("");
+    setWizStep(0); setWizDest(""); setWizDuration(""); setWizDurationInput("");
     setWizGroup(""); setWizGroupDetail(""); setWizGroupSub([]); setWizGroupCustom("");
     setWizInterests([]); setWizInterestInput(""); setWizTravelDates(""); setWizExtraNotes(""); setWizGenerating(false); setWizNamePrompt(false);
     setWizName(""); setWizCreatedTrip(null); setWizJustCreated(false); setError("");
+    setWizProfileId(null); setWizEmail(""); setWizEmailLocked(false); setWizFirstName(""); setWizLastName("");
+    setWizEmailSuggestions([]); setWizShowSuggestions(false); setWizNameHighlight(false);
   }
 
   function formatDates(trip: Trip) {
@@ -291,6 +376,7 @@ export default function HomePage() {
 
   // Completed answers for wizard breadcrumbs
   const wizAnswers: { label: string; value: string }[] = [];
+  if (wizStep > 0 && wizFirstName) wizAnswers.push({ label: "Planner", value: `${wizFirstName}${wizLastName ? ` ${wizLastName}` : ""}` });
   if (wizStep > 1 && wizDest) wizAnswers.push({ label: "Destination", value: wizDest });
   if (wizStep > 2 && wizDuration) wizAnswers.push({ label: "Duration", value: wizDuration });
   if (wizStep > 3 && wizGroup) wizAnswers.push({ label: "Group", value: `${wizGroup}${wizGroupDetail ? ` (${wizGroupDetail})` : ""}` });
@@ -305,7 +391,7 @@ export default function HomePage() {
   const btnSecondary = "px-6 py-3 rounded-xl bg-white border border-gray-200 text-gray-600 font-medium text-sm hover:bg-gray-50 transition-colors";
 
   return (
-    <div className="min-h-screen bg-gray-50 overflow-auto">
+    <div className="h-screen bg-gray-50 overflow-y-auto">
       {/* CSS animations */}
       <style>{`
         @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -493,6 +579,84 @@ export default function HomePage() {
                   </div>
                 )}
 
+                {/* Step 0: Profile */}
+                {wizStep === 0 && (
+                  <div className="animate-fade-in py-8">
+                    <h2 className="text-[18px] font-medium text-gray-900 mb-1">Who&apos;s planning?</h2>
+                    <p className="text-[13px] text-gray-500 mb-6">We&apos;ll remember you for next time</p>
+                    <div className="max-w-[400px] mx-auto">
+                      {/* Email field */}
+                      <div className="relative mb-4">
+                        <input
+                          ref={emailInputRef}
+                          type="email"
+                          value={wizEmail}
+                          onChange={e => { if (!wizEmailLocked) setWizEmail(e.target.value); }}
+                          onFocus={() => { if (wizEmailSuggestions.length > 0 && !wizEmailLocked) setWizShowSuggestions(true); }}
+                          onKeyDown={e => { if (e.key === "Enter") handleEmailEnter(); }}
+                          placeholder="Enter your email"
+                          readOnly={wizEmailLocked}
+                          className="w-full text-[16px] px-4 py-3 rounded-lg border text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-200 transition-all"
+                          style={{ height: 44, borderColor: wizEmailLocked ? "#1D9E75" : undefined }}
+                        />
+                        {wizEmailLocked && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                            <svg className="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                            <button onClick={() => { setWizEmailLocked(false); setWizProfileId(null); setWizFirstName(""); setWizLastName(""); setTimeout(() => emailInputRef.current?.focus(), 50); }}
+                              className="text-[11px] text-gray-400 hover:text-gray-600">change</button>
+                          </div>
+                        )}
+                        {/* Suggestions dropdown */}
+                        {wizShowSuggestions && wizEmailSuggestions.length > 0 && !wizEmailLocked && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-lg z-10"
+                            style={{ border: "0.5px solid #e5e7eb", boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>
+                            {wizEmailSuggestions.map(s => (
+                              <button key={s.id} onClick={() => selectProfileSuggestion(s)}
+                                className="w-full text-left px-4 py-2.5 hover:bg-emerald-50 transition-colors first:rounded-t-lg last:rounded-b-lg">
+                                <div className="text-[13px] text-gray-900">{s.email}</div>
+                                <div className="text-[12px] text-gray-500">{s.display_name}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      {/* Name fields — show after email locked */}
+                      {wizEmailLocked && (
+                        <div className="animate-fade-in flex gap-3 mb-5">
+                          <input
+                            ref={firstNameRef}
+                            type="text"
+                            value={wizFirstName}
+                            onChange={e => setWizFirstName(e.target.value)}
+                            placeholder="First name"
+                            className="flex-1 text-[16px] px-4 py-3 rounded-lg border text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-200 transition-all"
+                            style={{ height: 44, borderColor: wizNameHighlight ? "#1D9E75" : undefined }}
+                            onKeyDown={e => { if (e.key === "Enter") handleProfileConfirm(); }}
+                          />
+                          <input
+                            type="text"
+                            value={wizLastName}
+                            onChange={e => setWizLastName(e.target.value)}
+                            placeholder="Last name"
+                            className="flex-1 text-[16px] px-4 py-3 rounded-lg border text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-200 transition-all"
+                            style={{ height: 44, borderColor: wizNameHighlight ? "#1D9E75" : undefined }}
+                            onKeyDown={e => { if (e.key === "Enter") handleProfileConfirm(); }}
+                          />
+                        </div>
+                      )}
+                      {/* Continue button */}
+                      {wizEmailLocked && wizFirstName.trim() && (
+                        <button onClick={handleProfileConfirm}
+                          className="w-full py-3 rounded-lg text-white font-semibold text-[14px] transition-colors"
+                          style={{ backgroundColor: "#1D9E75" }}>
+                          Continue
+                        </button>
+                      )}
+                      {error && <p className="text-red-500 text-xs bg-red-50 rounded-lg px-3 py-2 mt-3">{error}</p>}
+                    </div>
+                  </div>
+                )}
+
                 {/* Step 1: Destination */}
                 {wizStep === 1 && (
                   <div className="animate-fade-in py-4">
@@ -501,6 +665,9 @@ export default function HomePage() {
                     <input ref={destInputRef} type="text" value={wizDest} onChange={e => setWizDest(e.target.value)}
                       placeholder="Italy, Northern Michigan, Costa Rica..."
                       className={inputClass} onKeyDown={e => e.key === "Enter" && handleDestSubmit()} />
+                    <div className="flex justify-center mt-6">
+                      <button onClick={() => setWizStep(0)} className={btnSecondary}>Back</button>
+                    </div>
                   </div>
                 )}
 

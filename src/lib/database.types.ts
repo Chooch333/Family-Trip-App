@@ -17,11 +17,23 @@ export type Database = {
         Update: Record<string, unknown>;
         Relationships: [];
       };
+      profiles: {
+        Row: {
+          id: string; display_name: string; email: string; avatar_color: string;
+          avatar_initial: string; bio: string | null; dietary: string | null;
+          mobility: string | null; travel_style: string | null;
+          home_location: string | null; created_at: string; updated_at: string;
+        };
+        Insert: Record<string, unknown>;
+        Update: Record<string, unknown>;
+        Relationships: [];
+      };
       trip_members: {
         Row: {
           id: string; trip_id: string; display_name: string; avatar_color: string;
           avatar_initial: string; role: "organizer" | "member"; is_online: boolean;
           last_seen_at: string; session_token: string | null; joined_at: string;
+          profile_id: string | null;
         };
         Insert: Record<string, unknown>;
         Update: Record<string, unknown>;
@@ -102,6 +114,7 @@ export type Database = {
 
 export type Trip = Database["public"]["Tables"]["trips"]["Row"];
 export type TripMember = Database["public"]["Tables"]["trip_members"]["Row"];
+export type Profile = Database["public"]["Tables"]["profiles"]["Row"];
 export type Day = Database["public"]["Tables"]["days"]["Row"];
 export type Stop = Database["public"]["Tables"]["stops"]["Row"];
 export type Vote = Database["public"]["Tables"]["votes"]["Row"];

@@ -122,7 +122,7 @@ export async function joinTrip(
 }
 
 export async function createTrip(
-  tripName: string, organizerName: string
+  tripName: string, organizerName: string, profileId?: string
 ): Promise<{ tripId: string; inviteCode: string; member: TripMember } | { error: string }> {
   const inviteCode = nanoid(10);
   const sessionToken = nanoid(32);
@@ -132,11 +132,14 @@ export async function createTrip(
   }).select().single();
   if (tripError || !trip) return { error: "Failed to create trip. Please try again." };
 
-  const { data: member, error: memberError } = await supabase.from("trip_members").insert({
+  const memberInsert: Record<string, unknown> = {
     trip_id: trip.id, display_name: organizerName, avatar_color: AVATAR_COLORS[0],
     avatar_initial: organizerName.charAt(0).toUpperCase(), role: "organizer",
     session_token: sessionToken, is_online: true, last_seen_at: new Date().toISOString(),
-  }).select().single();
+  };
+  if (profileId) memberInsert.profile_id = profileId;
+
+  const { data: member, error: memberError } = await supabase.from("trip_members").insert(memberInsert).select().single();
   if (memberError || !member) return { error: "Trip created but failed to add you. Please try again." };
 
   await supabase.from("trips").update({ created_by: member.id }).eq("id", trip.id);
