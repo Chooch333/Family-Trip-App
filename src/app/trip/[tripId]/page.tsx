@@ -547,10 +547,18 @@ Rules:
       const member = await getMemberForTrip(tripId);
       if (!member) { router.replace(`/trip/${tripId}/invite`); return; }
       setCurrentMember(member);
-      // Load profile if linked
+      // Load profile if linked, otherwise fall back to member data so avatar always shows
       if (member.profile_id) {
         const { data: prof } = await supabase.from("profiles").select("id, display_name, avatar_color, avatar_initial, email").eq("id", member.profile_id).single();
         if (prof) setCurrentProfile(prof as { id: string; display_name: string; avatar_color: string; avatar_initial: string; email: string });
+      } else {
+        setCurrentProfile({
+          id: member.id,
+          display_name: member.display_name,
+          avatar_color: member.avatar_color,
+          avatar_initial: member.avatar_initial,
+          email: "",
+        });
       }
       const [tripRes, membersRes, daysRes, stopsRes, votesRes, proposalRes, convRes] = await Promise.all([
         supabase.from("trips").select("*").eq("id", tripId).single(),
