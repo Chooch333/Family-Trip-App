@@ -330,7 +330,9 @@ Rules:
             .sort((a, b) => a.sort_order - b.sort_order)
             .map((s, i) => `  ${i + 1}. [stop_id: ${s.id}] ${s.name} (${s.stop_type}, ${s.duration_minutes} min)`)
             .join("\n");
-          dayContext = `The user is currently viewing Day ${ad.day_number}${ad.title ? ` — ${ad.title}` : ""}. When they say "today" or "this day" or ask about the current view, they mean Day ${ad.day_number}. Here are the stops for Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}`;
+          dayContext = `SELECTED DAY: Day ${ad.day_number} (day_id: ${ad.id})${ad.title ? ` — ${ad.title}` : ""}
+The user is currently viewing and interacting with Day ${ad.day_number}. This is their active focus. When they say "today", "this day", "here", "this one", "add a stop", "swap", "move", or make any request without specifying a day number, they mean Day ${ad.day_number}.
+Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}`;
         }
         const recentMessages = newMessages.slice(-20);
         const result = await askClaude({

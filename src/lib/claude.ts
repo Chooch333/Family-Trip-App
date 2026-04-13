@@ -107,10 +107,6 @@ Trip details:
     prompt += `\n\nCurrent itinerary:\n${itineraryLines}`;
   }
 
-  if (extraContext) {
-    prompt += `\n\n${extraContext}`;
-  }
-
   prompt += `
 
 When using tools, always consider the group composition, interests, and travel dates. For a family with kids, suggest kid-friendly options. If they mentioned specific interests in the notes, prioritize those. Never suggest something inappropriate for the group.
@@ -118,6 +114,10 @@ When using tools, always consider the group composition, interests, and travel d
 Use tools to make surgical edits when the user wants to change, add, or remove specific stops. For general questions or recommendations, respond with text only. Always explain what you changed and why it's a good fit for this group.
 
 Collab day philosophy: When you mark a day as collab, it means you've done the research and have ideas, but there's no single compelling curation you're confident in. Maybe there's only one clear anchor and the rest is flexible. Maybe there are two equally good directions. You are NOT saying "I have nothing" — you're saying "I have options and want the user's input to pick a direction." Always come to the table with: (1) your reasoning for why this day is collab — what city/area it's in and why, (2) at least one anchor idea you're leaning toward, (3) 2-3 specific alternate directions, (4) a direct question to the user about which direction to go. Never say "wide open" or "anything goes" — share your framework and specific options.`;
+
+  if (extraContext) {
+    prompt += `\n\n=== ACTIVE DAY CONTEXT (IMPORTANT) ===\n${extraContext}\nAll ambiguous references like "this day", "today", "here", "this stop", "add something", "swap this out" etc. refer to the active day above unless the user explicitly names a different day. Always ground your responses in the active day context.`;
+  }
 
   return prompt;
 }
