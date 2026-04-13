@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { getMemberForTrip, getSessionTokens } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
 import { askClaude, executeToolCall, getPromptChips } from "@/lib/claude";
+import { geocodeAndUpdateStop } from "@/lib/geocode";
 import TripLayout from "@/components/TripLayout";
 import ReactMarkdown from "react-markdown";
 import type { Trip, TripMember, Day, Stop, Vote, Proposal, Profile } from "@/lib/database.types";
@@ -348,7 +349,18 @@ Rules:
         // Refresh stops if any tools were executed
         if (result.toolCalls.length > 0) {
           const { data: freshStops } = await supabase.from("stops").select("*").eq("trip_id", tripId).is("version_owner", null).order("sort_order");
-          if (freshStops) setStops(freshStops as Stop[]);
+          if (freshStops) {
+            setStops(freshStops as Stop[]);
+            // Geocode any new stops missing coordinates
+            const dest = trip?.destination || undefined;
+            for (const s of freshStops as Stop[]) {
+              if (!s.latitude && !s.longitude && s.stop_type !== "transit") {
+                geocodeAndUpdateStop(s.id, s.name, dest).then(coords => {
+                  if (coords) setStops(prev => prev.map(x => x.id === s.id ? { ...x, ...coords } : x));
+                });
+              }
+            }
+          }
         }
 
         // Build display message: Claude's text + tool action summaries
@@ -440,9 +452,16 @@ Rules:
       sort_order: nextOrder, created_by: currentMember?.id || null,
     }).select().single();
     if (data && !error) {
-      setStops(prev => [...prev, data as Stop]);
+      const stop = data as Stop;
+      setStops(prev => [...prev, stop]);
       setNewStop({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "" });
       setShowAddStop(false);
+      // Geocode in background — update stop coordinates and refresh state
+      if (!stop.latitude && !stop.longitude && stop.stop_type !== "transit") {
+        geocodeAndUpdateStop(stop.id, stop.name, trip?.destination || undefined).then(coords => {
+          if (coords) setStops(prev => prev.map(s => s.id === stop.id ? { ...s, ...coords } : s));
+        });
+      }
     }
     setAddingStop(false);
   }
