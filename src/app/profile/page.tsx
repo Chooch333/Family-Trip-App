@@ -53,9 +53,27 @@ export default function ProfilePage() {
       // Find current profile via session tokens → trip_members → profile_id
       const tokens = getSessionTokens();
       let profileId: string | null = null;
+      let fallbackMember: { id: string; display_name: string; avatar_color: string; avatar_initial: string } | null = null;
       for (const token of tokens) {
-        const { data: member } = await supabase.from("trip_members").select("profile_id").eq("session_token", token).maybeSingle();
+        const { data: member } = await supabase.from("trip_members").select("id, profile_id, display_name, avatar_color, avatar_initial").eq("session_token", token).maybeSingle();
         if (member?.profile_id) { profileId = member.profile_id; break; }
+        if (member && !fallbackMember) fallbackMember = member;
+      }
+      // If no profile linked, auto-create one from the member data and link it
+      if (!profileId && fallbackMember) {
+        const { data: newProfile } = await supabase.from("profiles").insert({
+          display_name: fallbackMember.display_name,
+          avatar_color: fallbackMember.avatar_color,
+          avatar_initial: fallbackMember.avatar_initial,
+          email: `${fallbackMember.display_name.toLowerCase().replace(/\s+/g, ".")}@placeholder`,
+        }).select().single();
+        if (newProfile) {
+          profileId = newProfile.id;
+          // Link profile to all this user's trip_members
+          for (const token of tokens) {
+            await supabase.from("trip_members").update({ profile_id: profileId }).eq("session_token", token).is("profile_id", null);
+          }
+        }
       }
       if (!profileId) { router.replace("/"); return; }
 
