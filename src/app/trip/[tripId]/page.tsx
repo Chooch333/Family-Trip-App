@@ -195,6 +195,12 @@ export default function TripDashboard() {
   const [showTripSplash, setShowTripSplash] = useState(false);
   // Trip switcher
   const [allTrips, setAllTrips] = useState<TripSwitcherItem[]>([]);
+  // Accommodation
+  const [accommEditing, setAccommEditing] = useState(false);
+  const [accommForm, setAccommForm] = useState({ name: "", address: "", notes: "" });
+  const [accommSaving, setAccommSaving] = useState(false);
+  const [selectedAccomm, setSelectedAccomm] = useState(false);
+  const accommCardRef = useRef<HTMLDivElement>(null);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
@@ -330,9 +336,20 @@ Rules:
             .sort((a, b) => a.sort_order - b.sort_order)
             .map((s, i) => `  ${i + 1}. [stop_id: ${s.id}] ${s.name} (${s.stop_type}, ${s.duration_minutes} min)`)
             .join("\n");
+          // Build accommodation context for current and adjacent days
+          let accommContext = "";
+          if (ad.accommodation_name) {
+            accommContext += `\nAccommodation: The traveler is staying at "${ad.accommodation_name}"${ad.accommodation_address ? ` (${ad.accommodation_address})` : ""}. Factor proximity to this accommodation when discussing logistics and travel times.`;
+          }
+          const prevDay = days[activeDay - 1];
+          const nextDay = days[activeDay + 1];
+          if (prevDay?.accommodation_name) accommContext += `\nPrevious night: ${prevDay.accommodation_name}`;
+          if (ad.accommodation_name) accommContext += `\nTonight: ${ad.accommodation_name}`;
+          if (nextDay?.accommodation_name) accommContext += `\nTomorrow night: ${nextDay.accommodation_name}`;
+
           dayContext = `SELECTED DAY: Day ${ad.day_number} (day_id: ${ad.id})${ad.title ? ` — ${ad.title}` : ""}
 The user is currently viewing and interacting with Day ${ad.day_number}. This is their active focus. When they say "today", "this day", "here", "this one", "add a stop", "swap", "move", or make any request without specifying a day number, they mean Day ${ad.day_number}.
-Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}`;
+Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}`;
         }
         const recentMessages = newMessages.slice(-20);
         const result = await askClaude({
@@ -468,6 +485,63 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}`;
     setAddingStop(false);
   }
 
+  // Save accommodation for the active day + autofill same-city days
+  async function handleSaveAccommodation() {
+    const activeDayObj = days[activeDay];
+    if (!activeDayObj) return;
+    setAccommSaving(true);
+    const name = accommForm.name.trim() || null;
+    const address = accommForm.address.trim() || null;
+    const notes = accommForm.notes.trim() || null;
+
+    // Geocode
+    let lat: number | null = null;
+    let lng: number | null = null;
+    if (name) {
+      const query = [name, address, trip?.destination].filter(Boolean).join(", ");
+      try {
+        const res = await fetch(`/api/geocode?${new URLSearchParams({ q: query })}`);
+        if (res.ok) {
+          const geo = await res.json();
+          if (geo.latitude != null && geo.longitude != null) {
+            lat = geo.latitude;
+            lng = geo.longitude;
+          }
+        }
+      } catch { /* ignore geocode failure */ }
+    }
+
+    // Update current day
+    await supabase.from("days").update({
+      accommodation_name: name,
+      accommodation_address: address,
+      accommodation_latitude: lat,
+      accommodation_longitude: lng,
+      accommodation_notes: notes,
+    }).eq("id", activeDayObj.id);
+
+    // Autofill same-city days that have no accommodation
+    if (name && activeDayObj.title) {
+      await supabase.from("days").update({
+        accommodation_name: name,
+        accommodation_address: address,
+        accommodation_latitude: lat,
+        accommodation_longitude: lng,
+        accommodation_notes: notes,
+      }).eq("trip_id", tripId)
+        .neq("id", activeDayObj.id)
+        .is("accommodation_name", null)
+        .ilike("title", activeDayObj.title);
+    }
+
+    // Refresh days
+    const { data: freshDays } = await supabase.from("days").select("*").eq("trip_id", tripId).order("day_number");
+    if (freshDays) setDays(freshDays as Day[]);
+
+    setAccommEditing(false);
+    setAccommSaving(false);
+  }
+
   // Pulse a stop pin on the map
   function triggerPulse(stopId: string) {
     setPulsingStop(stopId);
@@ -490,7 +564,13 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}`;
   // Handle stop card click — expand and pulse
   function handleStopCardClick(stop: Stop) {
     setExpandedStop(expandedStop === stop.id ? null : stop.id);
+    setSelectedAccomm(false);
     triggerPulse(stop.id);
+  }
+
+  function handleAccommCardClick() {
+    setSelectedAccomm(true);
+    setExpandedStop(null);
   }
 
   // Drag-and-drop reordering for the active day's non-transit stops
@@ -827,6 +907,116 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}`;
           </DndContext>
         </div>
 
+        {/* Accommodation sub-card */}
+        {activeDayObj && (
+          <div className="px-3 py-2" ref={accommCardRef}>
+            {accommEditing ? (
+              <div style={{ border: "1.5px dashed #d1d5db", borderRadius: 8, padding: "10px 12px" }}>
+                <input
+                  type="text"
+                  value={accommForm.name}
+                  onChange={e => setAccommForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="Hotel or Airbnb name"
+                  autoFocus
+                  className="w-full text-[12px] px-2.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
+                  style={{ height: 36 }}
+                />
+                <input
+                  type="text"
+                  value={accommForm.address}
+                  onChange={e => setAccommForm(f => ({ ...f, address: e.target.value }))}
+                  placeholder="Address or neighborhood"
+                  className="w-full text-[12px] px-2.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400 mt-1.5"
+                  style={{ height: 36 }}
+                />
+                <input
+                  type="text"
+                  value={accommForm.notes}
+                  onChange={e => setAccommForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Notes (check-in time, parking, etc.)"
+                  className="w-full text-[12px] px-2.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400 mt-1.5"
+                  style={{ height: 36 }}
+                />
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    onClick={handleSaveAccommodation}
+                    disabled={accommSaving}
+                    className="px-3 py-1 rounded-md bg-emerald-500 text-white text-[11px] font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                  >
+                    {accommSaving ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    onClick={() => setAccommEditing(false)}
+                    className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : activeDayObj.accommodation_name ? (
+              <div
+                onClick={handleAccommCardClick}
+                className="cursor-pointer transition-all"
+                style={{
+                  border: selectedAccomm ? "1.5px solid #854F0B" : "0.5px solid #e5e7eb",
+                  borderRadius: 8,
+                  padding: "10px 12px",
+                  backgroundColor: "#fafaf9",
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <rect x="1" y="7" width="14" height="7" rx="1" stroke="#854F0B" strokeWidth="1.2"/>
+                    <path d="M4 7V5a4 4 0 018 0v2" stroke="#854F0B" strokeWidth="1.2" strokeLinecap="round"/>
+                    <rect x="5" y="9" width="2.5" height="2.5" rx="0.5" fill="#854F0B" opacity="0.4"/>
+                    <rect x="8.5" y="9" width="2.5" height="2.5" rx="0.5" fill="#854F0B" opacity="0.4"/>
+                  </svg>
+                  <span className="text-[12px] font-medium text-gray-900 flex-1 truncate">{activeDayObj.accommodation_name}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAccommForm({
+                        name: activeDayObj.accommodation_name || "",
+                        address: activeDayObj.accommodation_address || "",
+                        notes: activeDayObj.accommodation_notes || "",
+                      });
+                      setAccommEditing(true);
+                    }}
+                    className="text-gray-400 hover:text-gray-600 transition-colors flex-shrink-0"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M10 1.5l2.5 2.5L4.5 12H2v-2.5L10 1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </div>
+                {activeDayObj.accommodation_address && (
+                  <div className="text-[11px] text-gray-500 mt-0.5 truncate">{activeDayObj.accommodation_address}</div>
+                )}
+                {activeDayObj.accommodation_notes && (
+                  <div className="text-[11px] text-gray-400 mt-0.5 truncate">{activeDayObj.accommodation_notes}</div>
+                )}
+              </div>
+            ) : (
+              <div
+                onClick={() => {
+                  setAccommForm({ name: "", address: "", notes: "" });
+                  setAccommEditing(true);
+                }}
+                className="flex items-center gap-2 cursor-pointer hover:border-emerald-400 transition-colors"
+                style={{ border: "1.5px dashed #d1d5db", borderRadius: 8, padding: "10px 12px" }}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <rect x="1" y="7" width="14" height="7" rx="1" stroke="#9ca3af" strokeWidth="1.2"/>
+                  <path d="M4 7V5a4 4 0 018 0v2" stroke="#9ca3af" strokeWidth="1.2" strokeLinecap="round"/>
+                  <rect x="5" y="9" width="2.5" height="2.5" rx="0.5" fill="#9ca3af" opacity="0.4"/>
+                  <rect x="8.5" y="9" width="2.5" height="2.5" rx="0.5" fill="#9ca3af" opacity="0.4"/>
+                </svg>
+                <span className="text-[12px] text-gray-400">Add accommodation</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {showAddStop && activeDayObj && (
           <div className="px-3 py-2 border-t border-gray-100 bg-gray-50/60">
             <div className="text-[11px] font-medium text-gray-700 mb-1.5">New stop for Day {activeDayObj.day_number}</div>
@@ -1059,6 +1249,17 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}`;
                 pulsingStop={pulsingStop}
                 selectedStop={expandedStop}
                 onPinClick={handleMapPinClick}
+                accommodation={activeDayObj?.accommodation_name && activeDayObj?.accommodation_latitude && activeDayObj?.accommodation_longitude ? {
+                  name: activeDayObj.accommodation_name,
+                  latitude: activeDayObj.accommodation_latitude,
+                  longitude: activeDayObj.accommodation_longitude,
+                  selected: selectedAccomm,
+                } : null}
+                onAccommodationClick={() => {
+                  setSelectedAccomm(true);
+                  setExpandedStop(null);
+                  accommCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }}
               />
               {activeDayObj && (
                 <div
@@ -1131,7 +1332,7 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}`;
         dayColors={dayColors}
         members={members}
         stops={stops}
-        onSelectDay={setActiveDay}
+        onSelectDay={(d: number) => { setActiveDay(d); setSelectedAccomm(false); setAccommEditing(false); }}
         onAddDay={() => setShowAddDay(true)}
         trips={allTrips.map(item => item.trip)}
         onNewTrip={() => router.push("/")}

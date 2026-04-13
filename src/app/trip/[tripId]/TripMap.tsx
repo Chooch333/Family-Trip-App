@@ -1,8 +1,16 @@
 "use client";
 import React, { useEffect, useMemo, useState } from "react";
-import { MapContainer, TileLayer, CircleMarker, Tooltip, Polyline, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Marker, Tooltip, Polyline, useMap } from "react-leaflet";
+import L from "leaflet";
 import type { Day, Stop } from "@/lib/database.types";
 import "leaflet/dist/leaflet.css";
+
+export interface AccommodationPin {
+  name: string;
+  latitude: number;
+  longitude: number;
+  selected: boolean;
+}
 
 export interface TripMapProps {
   stops: Stop[];
@@ -12,6 +20,8 @@ export interface TripMapProps {
   pulsingStop: string | null;
   selectedStop: string | null;
   onPinClick: (stop: Stop) => void;
+  accommodation?: AccommodationPin | null;
+  onAccommodationClick?: () => void;
 }
 
 // --- Detect if a transit stop is non-car (train, bus, flight, ferry, etc.) ---
@@ -132,21 +142,38 @@ function clusterByTransit(dayStops: Stop[]): StopCluster[] {
 }
 
 // Auto-fit bounds
-function FitBounds({ stops, padding }: { stops: Stop[]; padding?: number }) {
+function FitBounds({ stops, padding, extraPoint }: { stops: Stop[]; padding?: number; extraPoint?: [number, number] | null }) {
   const map = useMap();
   const coords = useMemo(() => stops.filter(s => s.latitude && s.longitude), [stops]);
 
   useEffect(() => {
-    if (coords.length === 0) return;
-    const bounds = coords.map(s => [s.latitude!, s.longitude!] as [number, number]);
+    const bounds: [number, number][] = coords.map(s => [s.latitude!, s.longitude!]);
+    if (extraPoint) bounds.push(extraPoint);
+    if (bounds.length === 0) return;
     if (bounds.length === 1) {
       map.setView(bounds[0], 14, { animate: true });
     } else {
       map.fitBounds(bounds, { padding: [padding || 50, padding || 50], maxZoom: 15, animate: true });
     }
-  }, [coords, map, padding]);
+  }, [coords, map, padding, extraPoint]);
 
   return null;
+}
+
+// Amber inverted teardrop icon for accommodation
+function makeAccommIcon(selected: boolean) {
+  const scale = selected ? 1.15 : 1;
+  const w = Math.round(18 * scale);
+  const h = Math.round(28 * scale);
+  const ring = selected ? `<circle cx="9" cy="10" r="13" fill="none" stroke="rgba(133,79,11,0.3)" stroke-width="3"/>` : "";
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 18 28">${ring}<path d="M9 0C4 0 0 4 0 9c0 6.5 9 19 9 19s9-12.5 9-19c0-5-4-9-9-9z" fill="#854F0B" opacity="${selected ? 1 : 0.7}"/><circle cx="9" cy="9" r="4" fill="white" opacity="0.9"/></svg>`;
+  return L.divIcon({
+    html: svg,
+    className: "",
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h],
+    tooltipAnchor: [0, -h],
+  });
 }
 
 // Single map panel with pins + route line
@@ -167,6 +194,8 @@ function MapPanel({
   className,
   style,
   showAllDays,
+  accommodation,
+  onAccommodationClick,
 }: {
   visibleStops: Stop[];
   fitStops: Stop[];
@@ -184,6 +213,8 @@ function MapPanel({
   className?: string;
   style?: React.CSSProperties;
   showAllDays?: boolean;
+  accommodation?: AccommodationPin | null;
+  onAccommodationClick?: () => void;
 }) {
   const stopsWithCoords = useMemo(() => visibleStops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [visibleStops]);
   const fitCoordStops = useMemo(() => fitStops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [fitStops]);
@@ -213,7 +244,7 @@ function MapPanel({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <FitBounds stops={fitCoordStops} padding={fitPadding} />
+        <FitBounds stops={fitCoordStops} padding={fitPadding} extraPoint={accommodation ? [accommodation.latitude, accommodation.longitude] : null} />
         {/* Route polyline for active day */}
         {routePositions.length >= 2 && (
           <Polyline
@@ -269,13 +300,25 @@ function MapPanel({
               </CircleMarker>
             );
           })}
+        {/* Accommodation pin */}
+        {accommodation && (
+          <Marker
+            position={[accommodation.latitude, accommodation.longitude]}
+            icon={makeAccommIcon(accommodation.selected)}
+            eventHandlers={{ click: () => onAccommodationClick?.() }}
+          >
+            <Tooltip direction="top" offset={[0, -28]} opacity={0.95}>
+              <div className="text-[11px] font-medium">{accommodation.name}</div>
+            </Tooltip>
+          </Marker>
+        )}
       </MapContainer>
       </div>
     </div>
   );
 }
 
-export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop, selectedStop, onPinClick }: TripMapProps) {
+export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop, selectedStop, onPinClick, accommodation, onAccommodationClick }: TripMapProps) {
   const [viewMode, setViewMode] = useState<"day" | "all">("all");
   const nonTransitStops = useMemo(() => stops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [stops]);
   const activeDayId = days[activeDay]?.id;
@@ -348,6 +391,8 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
                 className="w-full h-full"
                 style={{ position: "absolute", inset: 0 }}
                 showAllDays={showAllStops}
+                accommodation={accommodation}
+                onAccommodationClick={onAccommodationClick}
               />
             </div>
             </React.Fragment>
@@ -369,6 +414,8 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
           routeColor={activeDayColor}
           className="flex-1 min-h-0"
           showAllDays={showAllStops}
+          accommodation={accommodation}
+          onAccommodationClick={onAccommodationClick}
         />
       )}
     </div>

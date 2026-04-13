@@ -44,6 +44,9 @@ export type Database = {
           id: string; trip_id: string; day_number: number; date: string | null;
           title: string | null; color: string; narrative: string | null; created_at: string;
           vibe_status: string | null; reasoning: string | null;
+          accommodation_name: string | null; accommodation_address: string | null;
+          accommodation_latitude: number | null; accommodation_longitude: number | null;
+          accommodation_notes: string | null;
         };
         Insert: Record<string, unknown>;
         Update: Record<string, unknown>;
