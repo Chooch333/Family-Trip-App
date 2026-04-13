@@ -868,15 +868,6 @@ Rules:
               + Add stop
             </button>
           )}
-          {activeDayObj && (
-            <button
-              onClick={() => router.push(`/trip/${tripId}/vibe`)}
-              className="w-full border border-dashed rounded-lg py-1.5 text-[11px] transition-colors hover:bg-purple-50"
-              style={{ borderColor: "#A89BF1", color: "#534AB7" }}
-            >
-              Re-vibe this day
-            </button>
-          )}
         </div>
       </>
     );

@@ -324,11 +324,6 @@ export default function HomePage() {
     router.push(`/trip/${tripId}/curating`);
   }
 
-  async function handleVibe() {
-    const tripId = await createTripFromIntake();
-    if (!tripId) return;
-    router.push(`/trip/${tripId}/curating?mode=vibe`);
-  }
 
 
   function generateWizardColors(count: number): string[] {
@@ -795,16 +790,11 @@ export default function HomePage() {
                     <div className="flex justify-center gap-3 mt-6">
                       <button onClick={() => setWizStep(5)} className={btnSecondary}>Back</button>
                     </div>
-                    <div className="flex gap-3 mt-5 max-w-md mx-auto">
+                    <div className="mt-5 max-w-md mx-auto">
                       <button onClick={handleCurate} disabled={wizGenerating}
-                        className="flex-1 py-3.5 rounded-lg text-white font-medium text-[14px] transition-colors disabled:opacity-50"
-                        style={{ backgroundColor: "#1D9E75" }}>
+                        className="w-full rounded-lg text-white font-medium text-[15px] transition-colors disabled:opacity-50"
+                        style={{ backgroundColor: "#1D9E75", padding: "14px 0", borderRadius: "8px" }}>
                         Curate my trip
-                      </button>
-                      <button onClick={handleVibe} disabled={wizGenerating}
-                        className="flex-1 py-3.5 rounded-lg font-medium text-[14px] transition-colors disabled:opacity-50"
-                        style={{ background: "transparent", color: "#534AB7", border: "2px solid #534AB7" }}>
-                        Let&apos;s vibe
                       </button>
                     </div>
                   </div>
