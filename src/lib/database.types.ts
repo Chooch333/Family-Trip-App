@@ -64,6 +64,7 @@ export type Database = {
           master_stop_id: string | null; created_by: string | null;
           created_at: string; updated_at: string;
           ai_note: string | null; on_bench: boolean | null;
+          is_anchor: boolean;
         };
         Insert: Record<string, unknown>;
         Update: Record<string, unknown>;

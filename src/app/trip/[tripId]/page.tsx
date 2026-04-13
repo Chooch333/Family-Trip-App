@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { askClaude, executeToolCall, getPromptChips } from "@/lib/claude";
 import { geocodeAndUpdateStop } from "@/lib/geocode";
 import TripLayout from "@/components/TripLayout";
+import AnchorIcon from "@/components/AnchorIcon";
 import ReactMarkdown from "react-markdown";
 import type { Trip, TripMember, Day, Stop, Vote, Proposal, Profile } from "@/lib/database.types";
 import { extractRouteCities, isMultiCityTrip, type RouteCity } from "@/lib/routeCities";
@@ -94,12 +95,16 @@ function SortableStopRow({
   isSelected,
   onClick,
   refSetter,
+  isAnchored,
+  onToggleAnchor,
 }: {
   stop: Stop;
   dayColor: string;
   isSelected: boolean;
   onClick: () => void;
   refSetter: (el: HTMLDivElement | null) => void;
+  isAnchored: boolean;
+  onToggleAnchor: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({ id: stop.id });
   const style: React.CSSProperties = {
@@ -146,20 +151,26 @@ function SortableStopRow({
         </svg>
       </div>
       <div className="flex-shrink-0" style={{ width: 4, backgroundColor: dayColor }} />
-      <div className="flex-1 min-w-0 px-3 py-2.5 flex items-start gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="text-[18px] font-medium text-gray-900 truncate leading-tight">{stop.name}</div>
-          <div className="text-[15px] text-gray-500 mt-0.5 truncate">
-            {stop.stop_type} · {stop.duration_minutes} min
-          </div>
-          {stop.description && (
-            <div className="text-[13px] text-gray-400 mt-1 leading-snug" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
-              {stop.description}
+      <div className="flex-1 min-w-0 px-3 py-2.5">
+        <div className="flex items-start gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="text-[18px] font-medium text-gray-900 truncate leading-tight">{stop.name}</div>
+            <div className="text-[15px] text-gray-500 mt-0.5 truncate">
+              {stop.stop_type} · {stop.duration_minutes} min
             </div>
+          </div>
+          {stop.start_time && (
+            <div className="text-[15px] text-gray-400 whitespace-nowrap pt-0.5">{formatTime12(stop.start_time)}</div>
           )}
+          <AnchorIcon isAnchored={isAnchored} onToggle={onToggleAnchor} size={28} />
         </div>
-        {stop.start_time && (
-          <div className="text-[15px] text-gray-400 whitespace-nowrap pt-0.5">{formatTime12(stop.start_time)}</div>
+        {stop.description && (
+          <div className="text-[13px] text-gray-400 mt-1 leading-snug" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+            {stop.description}
+          </div>
+        )}
+        {isAnchored && (
+          <div className="text-[11px] font-medium mt-1" style={{ color: "#0F6E56" }}>Anchor stop</div>
         )}
       </div>
     </div>
@@ -572,6 +583,27 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
     setExpandedStop(null);
   }
 
+  async function handleToggleAnchor(stop: Stop) {
+    const activeDayObj = days[activeDay];
+    if (!activeDayObj) return;
+    const newVal = !stop.is_anchor;
+
+    // Unset any other anchor in this day first
+    if (newVal) {
+      await supabase.from("stops").update({ is_anchor: false })
+        .eq("day_id", activeDayObj.id).eq("is_anchor", true);
+    }
+    // Toggle this stop
+    await supabase.from("stops").update({ is_anchor: newVal }).eq("id", stop.id);
+
+    // Update local state
+    setStops(prev => prev.map(s => {
+      if (s.id === stop.id) return { ...s, is_anchor: newVal };
+      if (newVal && s.day_id === activeDayObj.id && s.id !== stop.id) return { ...s, is_anchor: false };
+      return s;
+    }));
+  }
+
   // Drag-and-drop reordering for the active day's non-transit stops
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   function handleDragStart(_e: DragStartEvent) { /* no-op for now */ }
@@ -899,6 +931,8 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
                     isSelected={isSelected}
                     onClick={() => { handleStopCardClick(stop); }}
                     refSetter={(el) => { if (el) stopRefs.current.set(stop.id, el); }}
+                    isAnchored={!!stop.is_anchor}
+                    onToggleAnchor={() => handleToggleAnchor(stop)}
                   />
                 );
               })}
