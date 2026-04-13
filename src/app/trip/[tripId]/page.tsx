@@ -152,6 +152,11 @@ function SortableStopRow({
           <div className="text-[15px] text-gray-500 mt-0.5 truncate">
             {stop.stop_type} · {stop.duration_minutes} min
           </div>
+          {stop.description && (
+            <div className="text-[13px] text-gray-400 mt-1 leading-snug" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+              {stop.description}
+            </div>
+          )}
         </div>
         {stop.start_time && (
           <div className="text-[15px] text-gray-400 whitespace-nowrap pt-0.5">{formatTime12(stop.start_time)}</div>
