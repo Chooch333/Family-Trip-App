@@ -87,6 +87,18 @@ export type Database = {
         Update: Record<string, unknown>;
         Relationships: [];
       };
+      profile_memories: {
+        Row: {
+          id: string; profile_id: string;
+          category: "preference" | "history" | "observation" | "group" | "dislike";
+          content: string; confidence: "low" | "medium" | "high";
+          source_trip_id: string | null; source_context: string | null;
+          active: boolean; created_at: string; updated_at: string;
+        };
+        Insert: Record<string, unknown>;
+        Update: Record<string, unknown>;
+        Relationships: [];
+      };
       ai_conversations: {
         Row: {
           id: string; trip_id: string; member_id: string; messages: AIMessage[];

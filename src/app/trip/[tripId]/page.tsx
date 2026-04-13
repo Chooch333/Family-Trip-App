@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { askClaude, executeToolCall, getPromptChips } from "@/lib/claude";
 import TripLayout from "@/components/TripLayout";
 import ReactMarkdown from "react-markdown";
-import type { Trip, TripMember, Day, Stop, Vote, Proposal } from "@/lib/database.types";
+import type { Trip, TripMember, Day, Stop, Vote, Proposal, Profile } from "@/lib/database.types";
 import { extractRouteCities, isMultiCityTrip, type RouteCity } from "@/lib/routeCities";
 import {
   DndContext, DragEndEvent, DragStartEvent,
@@ -166,6 +166,7 @@ export default function TripDashboard() {
   const tripId = params.tripId as string;
   const [loading, setLoading] = useState(true);
   const [currentMember, setCurrentMember] = useState<TripMember | null>(null);
+  const [currentProfile, setCurrentProfile] = useState<{ id: string; display_name: string; avatar_color: string; avatar_initial: string; email: string } | undefined>(undefined);
   const [trip, setTrip] = useState<Trip | null>(null);
   const [members, setMembers] = useState<TripMember[]>([]);
   const [days, setDays] = useState<Day[]>([]);
@@ -546,6 +547,11 @@ Rules:
       const member = await getMemberForTrip(tripId);
       if (!member) { router.replace(`/trip/${tripId}/invite`); return; }
       setCurrentMember(member);
+      // Load profile if linked
+      if (member.profile_id) {
+        const { data: prof } = await supabase.from("profiles").select("id, display_name, avatar_color, avatar_initial, email").eq("id", member.profile_id).single();
+        if (prof) setCurrentProfile(prof as { id: string; display_name: string; avatar_color: string; avatar_initial: string; email: string });
+      }
       const [tripRes, membersRes, daysRes, stopsRes, votesRes, proposalRes, convRes] = await Promise.all([
         supabase.from("trips").select("*").eq("id", tripId).single(),
         supabase.from("trip_members").select("*").eq("trip_id", tripId).order("joined_at"),
@@ -1107,6 +1113,7 @@ Rules:
         trips={allTrips.map(item => item.trip)}
         onNewTrip={() => router.push("/")}
         onSwitchTrip={(id) => router.push(`/trip/${id}`)}
+        currentProfile={currentProfile}
         renderLeftPanel={renderLeftPanel}
         renderChat={renderChat}
         renderRightPanel={renderRightPanel}

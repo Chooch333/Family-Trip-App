@@ -1,7 +1,17 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import DayBar from "@/components/DayBar";
+import { supabase } from "@/lib/supabase";
 import type { Trip, Day, TripMember, Stop } from "@/lib/database.types";
+
+interface CurrentProfile {
+  id: string;
+  display_name: string;
+  avatar_color: string;
+  avatar_initial: string;
+  email: string;
+}
 
 interface TripLayoutProps {
   trip: Trip;
@@ -17,6 +27,8 @@ interface TripLayoutProps {
   trips?: Trip[];
   onNewTrip?: () => void;
   onSwitchTrip?: (id: string) => void;
+
+  currentProfile?: CurrentProfile;
 
   renderLeftPanel: () => ReactNode;
   renderChat: () => ReactNode;
@@ -37,12 +49,59 @@ export default function TripLayout({
   trips,
   onNewTrip,
   onSwitchTrip,
+  currentProfile,
   renderLeftPanel,
   renderChat,
   renderRightPanel,
   renderChatOverlay,
 }: TripLayoutProps) {
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [avatarPopover, setAvatarPopover] = useState(false);
+  const [switchUserMode, setSwitchUserMode] = useState(false);
+  const [switchEmail, setSwitchEmail] = useState("");
+  const [switchSuggestions, setSwitchSuggestions] = useState<{ id: string; email: string; display_name: string; avatar_color: string; avatar_initial: string }[]>([]);
+  const [switchError, setSwitchError] = useState("");
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const avatarBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!avatarPopover) return;
+    function handleClick(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node) && avatarBtnRef.current && !avatarBtnRef.current.contains(e.target as Node)) {
+        setAvatarPopover(false);
+        setSwitchUserMode(false);
+        setSwitchEmail("");
+        setSwitchSuggestions([]);
+        setSwitchError("");
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [avatarPopover]);
+
+  // Switch user email search
+  useEffect(() => {
+    if (!switchUserMode || switchEmail.length < 2) { setSwitchSuggestions([]); setSwitchError(""); return; }
+    const timeout = setTimeout(async () => {
+      const { data } = await supabase.from("profiles").select("id, email, display_name, avatar_color, avatar_initial").ilike("email", `%${switchEmail}%`).order("email").limit(5);
+      if (data && data.length > 0) { setSwitchSuggestions(data); setSwitchError(""); }
+      else { setSwitchSuggestions([]); }
+    }, 200);
+    return () => clearTimeout(timeout);
+  }, [switchEmail, switchUserMode]);
+
+  async function handleSwitchToProfile(profileId: string) {
+    // Update current trip member's profile_id
+    const { data: member } = await supabase.from("trip_members").select("id").eq("trip_id", trip.id).eq("profile_id", currentProfile?.id || "").maybeSingle();
+    if (member) {
+      await supabase.from("trip_members").update({ profile_id: profileId }).eq("id", member.id);
+    }
+    setAvatarPopover(false);
+    setSwitchUserMode(false);
+    window.location.reload();
+  }
 
   const activeDayColor = dayColors[activeDay] || "#1D9E75";
   const railTrips = (trips || []).slice(0, 4);
@@ -130,6 +189,106 @@ export default function TripLayout({
               );
             })}
           </div>
+          {/* User avatar at bottom of rail */}
+          {currentProfile && (
+            <div className="relative" style={{ marginTop: "auto", marginBottom: 12 }}>
+              <button
+                ref={avatarBtnRef}
+                onClick={() => { setAvatarPopover(o => !o); setSwitchUserMode(false); setSwitchEmail(""); setSwitchSuggestions([]); setSwitchError(""); }}
+                title={currentProfile.display_name}
+                className="flex items-center justify-center text-white text-[13px] font-medium transition-colors"
+                style={{
+                  width: 32, height: 32, borderRadius: "50%",
+                  backgroundColor: currentProfile.avatar_color,
+                  border: "2px solid white",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "white"; }}
+              >
+                {currentProfile.avatar_initial}
+              </button>
+              {/* Avatar popover */}
+              {avatarPopover && (
+                <div
+                  ref={popoverRef}
+                  style={{
+                    position: "absolute", bottom: "calc(100% + 8px)", left: 0,
+                    width: 220, backgroundColor: "white",
+                    border: `0.5px solid ${BORDER}`, borderRadius: 10,
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 30,
+                    padding: "8px 0",
+                  }}
+                >
+                  {/* Current user */}
+                  <div style={{ padding: "10px 14px", borderBottom: `0.5px solid ${BORDER}` }} className="flex items-center gap-2.5">
+                    <div className="flex-shrink-0 flex items-center justify-center text-white text-[12px] font-medium"
+                      style={{ width: 28, height: 28, borderRadius: "50%", backgroundColor: currentProfile.avatar_color }}>
+                      {currentProfile.avatar_initial}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium text-gray-900 truncate">{currentProfile.display_name}</div>
+                      <div className="text-[11px] text-gray-500 truncate">{currentProfile.email}</div>
+                    </div>
+                  </div>
+                  {!switchUserMode ? (
+                    <>
+                      <button
+                        onClick={() => { setAvatarPopover(false); router.push("/profile"); }}
+                        className="w-full text-left text-[13px] text-gray-700 hover:bg-gray-50 transition-colors"
+                        style={{ padding: "8px 14px" }}
+                      >
+                        Profile &amp; settings
+                      </button>
+                      <button
+                        onClick={() => setSwitchUserMode(true)}
+                        className="w-full text-left text-[13px] text-gray-700 hover:bg-gray-50 transition-colors"
+                        style={{ padding: "8px 14px" }}
+                      >
+                        Switch user
+                      </button>
+                    </>
+                  ) : (
+                    <div style={{ padding: "10px 14px" }}>
+                      <input
+                        type="email"
+                        value={switchEmail}
+                        onChange={e => setSwitchEmail(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter" && switchEmail.trim() && switchSuggestions.length === 0) {
+                            setSwitchError("No profile found");
+                          }
+                        }}
+                        placeholder="Email address"
+                        autoFocus
+                        className="w-full text-[13px] px-3 py-2 rounded-lg border border-gray-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-200 transition-all"
+                        style={{ height: 36 }}
+                      />
+                      {switchSuggestions.length > 0 && (
+                        <div className="mt-1.5 space-y-0.5">
+                          {switchSuggestions.map(s => (
+                            <button key={s.id} onClick={() => handleSwitchToProfile(s.id)}
+                              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-gray-50 transition-colors text-left">
+                              <div className="flex-shrink-0 flex items-center justify-center text-white text-[10px] font-medium"
+                                style={{ width: 24, height: 24, borderRadius: "50%", backgroundColor: s.avatar_color }}>
+                                {s.avatar_initial}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-[12px] font-medium text-gray-900 truncate">{s.display_name}</div>
+                                <div className="text-[11px] text-gray-500 truncate">{s.email}</div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {switchError && <p className="text-[12px] text-red-400 mt-2">{switchError}</p>}
+                      <button onClick={() => { setSwitchUserMode(false); setSwitchEmail(""); setSwitchSuggestions([]); setSwitchError(""); }}
+                        className="text-[12px] text-gray-400 hover:text-gray-600 mt-2 transition-colors">Cancel</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Padded panel container — three equal-width panels with even gaps */}
@@ -250,6 +409,19 @@ export default function TripLayout({
               className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 text-[13px] font-medium text-emerald-700 hover:bg-emerald-50 transition-colors w-full flex-shrink-0"
             >
               <span className="text-base leading-none">+</span> New trip
+            </button>
+          )}
+          {currentProfile && (
+            <button
+              onClick={() => { setSidebarOpen(false); router.push("/profile"); }}
+              className="flex items-center gap-2.5 w-full flex-shrink-0 hover:bg-gray-50 transition-colors"
+              style={{ padding: "10px 14px", borderTop: `0.5px solid ${BORDER}` }}
+            >
+              <div className="flex-shrink-0 flex items-center justify-center text-white text-[12px] font-medium"
+                style={{ width: 28, height: 28, borderRadius: "50%", backgroundColor: currentProfile.avatar_color }}>
+                {currentProfile.avatar_initial}
+              </div>
+              <span className="text-[13px] text-gray-700">Profile &amp; settings</span>
             </button>
           )}
         </aside>

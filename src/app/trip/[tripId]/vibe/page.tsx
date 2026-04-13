@@ -256,6 +256,7 @@ export default function VibePlanningPage() {
 
   const [loading, setLoading] = useState(true);
   const [currentMember, setCurrentMember] = useState<TripMember | null>(null);
+  const [currentProfile, setCurrentProfile] = useState<{ id: string; display_name: string; avatar_color: string; avatar_initial: string; email: string } | undefined>(undefined);
   const [trip, setTrip] = useState<VibeTrip | null>(null);
   const [days, setDays] = useState<VibeDay[]>([]);
   const [stops, setStops] = useState<VibeStop[]>([]);
@@ -290,6 +291,10 @@ export default function VibePlanningPage() {
       const member = await getMemberForTrip(tripId);
       if (!member) { router.replace(`/trip/${tripId}/invite`); return; }
       setCurrentMember(member);
+      if (member.profile_id) {
+        const { data: prof } = await supabase.from("profiles").select("id, display_name, avatar_color, avatar_initial, email").eq("id", member.profile_id).single();
+        if (prof) setCurrentProfile(prof as { id: string; display_name: string; avatar_color: string; avatar_initial: string; email: string });
+      }
       const [tripRes, daysRes, stopsRes, allTripsRes] = await Promise.all([
         supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
         supabase.from("days").select("*").eq("trip_id", tripId).order("day_number"),
@@ -1288,6 +1293,7 @@ export default function VibePlanningPage() {
         activeDay={activeDay}
         dayColors={dayColors}
         stops={stops}
+        currentProfile={currentProfile}
         onSelectDay={(idx) => {
           setActiveDay(idx);
           setSelectedVibe(null);
