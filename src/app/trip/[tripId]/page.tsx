@@ -150,7 +150,7 @@ function SortableStopRow({
           <circle cx="2" cy="12" r="1.2" /><circle cx="6" cy="12" r="1.2" />
         </svg>
       </div>
-      <div className="flex-shrink-0" style={{ width: 4, backgroundColor: dayColor }} />
+      <div className="flex-shrink-0" style={{ width: isAnchored ? 8 : 4, backgroundColor: dayColor, transition: "width 200ms ease" }} />
       <div className="flex-1 min-w-0 px-3 py-2.5">
         <div className="flex items-start gap-2">
           <div className="flex-1 min-w-0">
@@ -168,9 +168,6 @@ function SortableStopRow({
           <div className="text-[13px] text-gray-400 mt-1 leading-snug" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
             {stop.description}
           </div>
-        )}
-        {isAnchored && (
-          <div className="text-[11px] font-medium mt-1" style={{ color: "#0F6E56" }}>Anchor stop</div>
         )}
       </div>
     </div>
