@@ -197,7 +197,7 @@ export default function TripDashboard() {
   const [allTrips, setAllTrips] = useState<TripSwitcherItem[]>([]);
   // Accommodation
   const [accommEditing, setAccommEditing] = useState(false);
-  const [accommForm, setAccommForm] = useState({ name: "", address: "", notes: "" });
+  const [accommForm, setAccommForm] = useState({ name: "" });
   const [accommSaving, setAccommSaving] = useState(false);
   const [selectedAccomm, setSelectedAccomm] = useState(false);
   const accommCardRef = useRef<HTMLDivElement>(null);
@@ -339,7 +339,7 @@ Rules:
           // Build accommodation context for current and adjacent days
           let accommContext = "";
           if (ad.accommodation_name) {
-            accommContext += `\nAccommodation: The traveler is staying at "${ad.accommodation_name}"${ad.accommodation_address ? ` (${ad.accommodation_address})` : ""}. Factor proximity to this accommodation when discussing logistics and travel times.`;
+            accommContext += `\nAccommodation: The traveler is staying at "${ad.accommodation_name}". Factor proximity to this accommodation when discussing logistics and travel times.`;
           }
           const prevDay = days[activeDay - 1];
           const nextDay = days[activeDay + 1];
@@ -491,14 +491,12 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
     if (!activeDayObj) return;
     setAccommSaving(true);
     const name = accommForm.name.trim() || null;
-    const address = accommForm.address.trim() || null;
-    const notes = accommForm.notes.trim() || null;
 
     // Geocode
     let lat: number | null = null;
     let lng: number | null = null;
     if (name) {
-      const query = [name, address, trip?.destination].filter(Boolean).join(", ");
+      const query = [name, trip?.destination].filter(Boolean).join(", ");
       try {
         const res = await fetch(`/api/geocode?${new URLSearchParams({ q: query })}`);
         if (res.ok) {
@@ -514,20 +512,16 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
     // Update current day
     await supabase.from("days").update({
       accommodation_name: name,
-      accommodation_address: address,
       accommodation_latitude: lat,
       accommodation_longitude: lng,
-      accommodation_notes: notes,
     }).eq("id", activeDayObj.id);
 
     // Autofill same-city days that have no accommodation
     if (name && activeDayObj.title) {
       await supabase.from("days").update({
         accommodation_name: name,
-        accommodation_address: address,
         accommodation_latitude: lat,
         accommodation_longitude: lng,
-        accommodation_notes: notes,
       }).eq("trip_id", tripId)
         .neq("id", activeDayObj.id)
         .is("accommodation_name", null)
@@ -921,22 +915,6 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
                   className="w-full text-[12px] px-2.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
                   style={{ height: 36 }}
                 />
-                <input
-                  type="text"
-                  value={accommForm.address}
-                  onChange={e => setAccommForm(f => ({ ...f, address: e.target.value }))}
-                  placeholder="Address or neighborhood"
-                  className="w-full text-[12px] px-2.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400 mt-1.5"
-                  style={{ height: 36 }}
-                />
-                <input
-                  type="text"
-                  value={accommForm.notes}
-                  onChange={e => setAccommForm(f => ({ ...f, notes: e.target.value }))}
-                  placeholder="Notes (check-in time, parking, etc.)"
-                  className="w-full text-[12px] px-2.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400 mt-1.5"
-                  style={{ height: 36 }}
-                />
                 <div className="flex items-center gap-2 mt-2">
                   <button
                     onClick={handleSaveAccommodation}
@@ -977,8 +955,6 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
                       e.stopPropagation();
                       setAccommForm({
                         name: activeDayObj.accommodation_name || "",
-                        address: activeDayObj.accommodation_address || "",
-                        notes: activeDayObj.accommodation_notes || "",
                       });
                       setAccommEditing(true);
                     }}
@@ -989,17 +965,11 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
                     </svg>
                   </button>
                 </div>
-                {activeDayObj.accommodation_address && (
-                  <div className="text-[11px] text-gray-500 mt-0.5 truncate">{activeDayObj.accommodation_address}</div>
-                )}
-                {activeDayObj.accommodation_notes && (
-                  <div className="text-[11px] text-gray-400 mt-0.5 truncate">{activeDayObj.accommodation_notes}</div>
-                )}
               </div>
             ) : (
               <div
                 onClick={() => {
-                  setAccommForm({ name: "", address: "", notes: "" });
+                  setAccommForm({ name: "" });
                   setAccommEditing(true);
                 }}
                 className="flex items-center gap-2 cursor-pointer hover:border-emerald-400 transition-colors"
