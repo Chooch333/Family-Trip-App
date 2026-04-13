@@ -282,6 +282,7 @@ export default function VibePlanningPage() {
   const optionsStorageKey = `vibe_options_${tripId}`;
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
 
   const dayColors = useMemo(() => generateDayColors(days.length), [days.length]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -573,6 +574,7 @@ export default function VibePlanningPage() {
     const userMsg = { role: "user" as const, content: text };
     setChatMessages(prev => [...prev, userMsg]);
     setChatInput("");
+    if (chatInputRef.current) chatInputRef.current.style.height = "auto";
     setIsThinking(true);
     const dayCtx = currentDay
       ? `Viewing Day ${currentDay.day_number}${currentDay.title ? ` — ${currentDay.title}` : ""}. ${selectedVibe ? `Vibe: "${selectedVibe}".` : ""}`
@@ -1055,17 +1057,18 @@ export default function VibePlanningPage() {
       )}
 
       <div
-        className="flex gap-2 px-4 py-2.5 flex-shrink-0 border-t border-gray-100"
+        className="flex items-end gap-2 px-4 py-2.5 flex-shrink-0 border-t border-gray-100"
         style={{ borderTopWidth: 0.5 }}
       >
-        <input
-          type="text"
+        <textarea
+          ref={chatInputRef}
           value={chatInput}
-          onChange={e => setChatInput(e.target.value)}
+          onChange={e => { setChatInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px"; }}
           placeholder="Ask Claude about this day..."
           className="flex-1 text-[13px] px-4 py-2.5 border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-purple-200 focus:border-purple-300 transition-colors"
-          style={{ borderRadius: 20 }}
-          onKeyDown={e => e.key === "Enter" && handleChatSend()}
+          style={{ borderRadius: 20, resize: "none", overflow: "hidden", minHeight: 40, maxHeight: 150 }}
+          rows={1}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleChatSend(); } }}
           disabled={isThinking}
         />
         <button

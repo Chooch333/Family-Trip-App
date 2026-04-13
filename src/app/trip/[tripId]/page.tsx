@@ -196,6 +196,7 @@ export default function TripDashboard() {
   const [allTrips, setAllTrips] = useState<TripSwitcherItem[]>([]);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const stopRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   const dayColors = generateDayColors(days.length);
@@ -274,6 +275,7 @@ Rules:
     const newMessages = [...chatMessages, userMsg];
     setChatMessages(newMessages);
     setChatInput("");
+    if (chatInputRef.current) chatInputRef.current.style.height = "auto";
     setGeneratingItinerary(true);
 
     try {
@@ -974,17 +976,18 @@ Rules:
       )}
 
       <div
-        className="flex gap-2 px-4 py-2.5 flex-shrink-0 border-t border-gray-100"
+        className="flex items-end gap-2 px-4 py-2.5 flex-shrink-0 border-t border-gray-100"
         style={{ borderTopWidth: 0.5 }}
       >
-        <input
-          type="text"
+        <textarea
+          ref={chatInputRef}
           value={chatInput}
-          onChange={e => setChatInput(e.target.value)}
+          onChange={e => { setChatInput(e.target.value); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px"; }}
           placeholder={days.length === 0 ? "Describe your dream trip..." : "Ask about your trip..."}
           className="flex-1 text-[13px] px-4 py-2.5 border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-300 transition-colors"
-          style={{ borderRadius: 20 }}
-          onKeyDown={e => e.key === "Enter" && handleChatSend()}
+          style={{ borderRadius: 20, resize: "none", overflow: "hidden", minHeight: 40, maxHeight: 150 }}
+          rows={1}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleChatSend(); } }}
           disabled={generatingItinerary}
         />
         <button
