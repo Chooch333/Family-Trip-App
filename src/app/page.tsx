@@ -601,6 +601,13 @@ export default function HomePage() {
                               className="text-[11px] text-gray-400 hover:text-gray-600">change</button>
                           </div>
                         )}
+                        {/* Skip for now */}
+                        {!wizEmailLocked && (
+                          <button onClick={() => setWizStep(1)}
+                            className="absolute -bottom-7 left-0 right-0 text-[12px] text-gray-400 hover:text-gray-600 transition-colors">
+                            Skip for now
+                          </button>
+                        )}
                         {/* Suggestions dropdown */}
                         {wizShowSuggestions && wizEmailSuggestions.length > 0 && !wizEmailLocked && (
                           <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-lg z-10"
