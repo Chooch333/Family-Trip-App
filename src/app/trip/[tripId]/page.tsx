@@ -738,7 +738,7 @@ Rules:
               Day {activeDayObj.day_number}{activeDayObj.title ? ` · ${activeDayObj.title}` : ""}
             </div>
             {activeDayObj.narrative && (
-              <div className="text-[17px] text-gray-500 leading-snug mt-1.5 line-clamp-3">
+              <div className="text-[17px] text-gray-500 leading-snug mt-1.5">
                 {activeDayObj.narrative}
               </div>
             )}

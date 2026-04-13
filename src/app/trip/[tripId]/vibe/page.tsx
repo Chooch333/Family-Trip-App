@@ -897,10 +897,10 @@ export default function VibePlanningPage() {
             )}
           </div>
           {currentDay.narrative && (
-            <div className="text-[19px] text-gray-500 leading-[1.5] line-clamp-3">{currentDay.narrative}</div>
+            <div className="text-[19px] text-gray-500 leading-[1.5]">{currentDay.narrative}</div>
           )}
           {currentDay.reasoning && (
-            <div className="text-[19px] text-gray-400 italic leading-[1.5] mt-1.5 line-clamp-3">
+            <div className="text-[19px] text-gray-400 italic leading-[1.5] mt-1.5">
               {currentDay.reasoning}
             </div>
           )}
