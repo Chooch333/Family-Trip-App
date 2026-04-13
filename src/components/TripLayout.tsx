@@ -113,46 +113,16 @@ export default function TripLayout({
   }
 
   return (
-    <div className="h-screen flex flex-col bg-white overflow-hidden relative">
-      {/* Top bar — hamburger + trip name + day bar inline */}
-      <div className="flex items-stretch flex-shrink-0 bg-white">
-        <div className="flex items-center gap-3 pl-3 pr-4 border-b border-gray-100">
-          <button
-            onClick={() => setSidebarOpen((o) => !o)}
-            aria-label="Toggle sidebar"
-            className="p-1.5 rounded hover:bg-gray-100 transition-colors flex items-center justify-center flex-shrink-0"
-          >
-            <svg width="20" height="14" viewBox="0 0 20 14" fill="none">
-              <line x1="0" y1="2" x2="20" y2="2" stroke="#444" strokeWidth="1.6" strokeLinecap="round" />
-              <line x1="0" y1="7" x2="20" y2="7" stroke="#444" strokeWidth="1.6" strokeLinecap="round" />
-              <line x1="0" y1="12" x2="20" y2="12" stroke="#444" strokeWidth="1.6" strokeLinecap="round" />
-            </svg>
-          </button>
-          <div className="text-[14px] font-medium text-gray-900 whitespace-nowrap">{trip.name}</div>
-        </div>
-        <div className="flex-1 min-w-0">
-          <DayBar
-            days={days}
-            activeDay={activeDay}
-            dayColors={dayColors}
-            onSelectDay={onSelectDay}
-            showAddDay={!!onAddDay}
-            onAddDay={onAddDay}
-          />
-        </div>
-      </div>
-
-      {/* Body row */}
-      <div className="flex flex-1 min-h-0 relative">
-        {/* Sidebar collapsed rail — always visible when overlay closed */}
-        <div
-          className="flex-shrink-0 flex flex-col items-center py-2 gap-2"
-          style={{
-            width: 48,
-            backgroundColor: RAIL_BG,
-            borderRight: `0.5px solid ${BORDER}`,
-          }}
-        >
+    <div className="h-screen flex flex-row bg-white overflow-hidden relative">
+      {/* Sidebar collapsed rail — full height, always visible */}
+      <div
+        className="flex-shrink-0 flex flex-col items-center py-2 gap-2"
+        style={{
+          width: 48,
+          backgroundColor: RAIL_BG,
+          borderRight: `0.5px solid ${BORDER}`,
+        }}
+      >
           <button
             onClick={() => setSidebarOpen((o) => !o)}
             aria-label="Open sidebar"
@@ -291,6 +261,27 @@ export default function TripLayout({
           )}
         </div>
 
+      {/* Right side — top bar + body */}
+      <div className="flex flex-col flex-1 min-w-0 min-h-0">
+        {/* Top bar — trip name + day bar */}
+        <div className="flex items-stretch flex-shrink-0 bg-white">
+          <div className="flex items-center pl-3 pr-4 border-b border-gray-100">
+            <div className="text-[14px] font-medium text-gray-900 whitespace-nowrap">{trip.name}</div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <DayBar
+              days={days}
+              activeDay={activeDay}
+              dayColors={dayColors}
+              onSelectDay={onSelectDay}
+              showAddDay={!!onAddDay}
+              onAddDay={onAddDay}
+            />
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex flex-1 min-h-0 relative">
         {/* Padded panel container — three equal-width panels with even gaps */}
         <div
           className="flex flex-1 min-w-0 min-h-0"
@@ -425,6 +416,7 @@ export default function TripLayout({
             </button>
           )}
         </aside>
+        </div>
       </div>
     </div>
   );
