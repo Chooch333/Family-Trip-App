@@ -581,22 +581,10 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
   }
 
   async function handleToggleAnchor(stop: Stop) {
-    const activeDayObj = days[activeDay];
-    if (!activeDayObj) return;
     const newVal = !stop.is_anchor;
-
-    // Unset any other anchor in this day first
-    if (newVal) {
-      await supabase.from("stops").update({ is_anchor: false })
-        .eq("day_id", activeDayObj.id).eq("is_anchor", true);
-    }
-    // Toggle this stop
     await supabase.from("stops").update({ is_anchor: newVal }).eq("id", stop.id);
-
-    // Update local state
     setStops(prev => prev.map(s => {
       if (s.id === stop.id) return { ...s, is_anchor: newVal };
-      if (newVal && s.day_id === activeDayObj.id && s.id !== stop.id) return { ...s, is_anchor: false };
       return s;
     }));
   }
