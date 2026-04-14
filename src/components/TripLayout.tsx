@@ -38,6 +38,34 @@ interface TripLayoutProps {
 
 const RAIL_BG = "#f7f7f4";
 const BORDER = "#e5e7eb";
+const BORDER_ACTIVE = "#d1d5db";
+const SHADOW_ACTIVE = "0 8px 32px rgba(0,0,0,0.12)";
+const PANEL_TRANSITION = "all 0.35s cubic-bezier(0.4, 0, 0.2, 1)";
+
+type FocusedPanel = "stops" | "chat" | "map";
+
+function getPanelStyles(focused: FocusedPanel) {
+  if (focused === "stops") {
+    return {
+      stops: { width: "45%", left: 12, right: "auto", zIndex: 3 },
+      chat:  { width: "32%", left: "calc(45% - 18px)", right: "auto", zIndex: 2 },
+      map:   { width: "30%", left: "auto", right: 12, zIndex: 1 },
+    };
+  }
+  if (focused === "map") {
+    return {
+      stops: { width: "30%", left: 12, right: "auto", zIndex: 1 },
+      chat:  { width: "32%", left: "calc(30% - 18px)", right: "auto", zIndex: 2 },
+      map:   { width: "45%", left: "auto", right: 12, zIndex: 3 },
+    };
+  }
+  // Default: chat focused
+  return {
+    stops: { width: "33%", left: 12, right: "auto", zIndex: 1 },
+    chat:  { width: "36%", left: "calc(33% - 18px)", right: "auto", zIndex: 3 },
+    map:   { width: "33%", left: "auto", right: 12, zIndex: 2 },
+  };
+}
 
 export default function TripLayout({
   trip,
@@ -64,6 +92,9 @@ export default function TripLayout({
   const [switchError, setSwitchError] = useState("");
   const popoverRef = useRef<HTMLDivElement>(null);
   const avatarBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Overlapping card focus state — chat is default
+  const [focusedPanel, setFocusedPanel] = useState<FocusedPanel>("chat");
 
   // Close popover on outside click
   useEffect(() => {
@@ -93,7 +124,6 @@ export default function TripLayout({
   }, [switchEmail, switchUserMode]);
 
   async function handleSwitchToProfile(profileId: string) {
-    // Update current trip member's profile_id
     const { data: member } = await supabase.from("trip_members").select("id").eq("trip_id", trip.id).eq("profile_id", currentProfile?.id || "").maybeSingle();
     if (member) {
       await supabase.from("trip_members").update({ profile_id: profileId }).eq("id", member.id);
@@ -105,6 +135,7 @@ export default function TripLayout({
 
   const activeDayColor = dayColors[activeDay] || "#1D9E75";
   const railTrips = (trips || []).slice(0, 4);
+  const panelStyles = getPanelStyles(focusedPanel);
 
   function tripInitial(name: string): string {
     const trimmed = name.trim();
@@ -113,7 +144,7 @@ export default function TripLayout({
   }
 
   return (
-    <div className="h-screen flex flex-row bg-white overflow-hidden relative">
+    <div className="h-screen flex flex-row overflow-hidden relative" style={{ backgroundColor: "#f0f0ec" }}>
       {/* Sidebar collapsed rail — full height, always visible */}
       <div
         className="flex-shrink-0 flex flex-col items-center py-2 gap-2"
@@ -264,11 +295,11 @@ export default function TripLayout({
       {/* Right side — top bar + body */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0">
         {/* Top bar — trip name + day bar */}
-        <div className="flex items-stretch flex-shrink-0 bg-white">
-          <div className="flex items-center pl-3 pr-4 border-b border-gray-100">
+        <div className="flex items-stretch flex-shrink-0" style={{ backgroundColor: "#f0f0ec" }}>
+          <div className="flex items-center pl-3 pr-4" style={{ borderBottom: `0.5px solid ${BORDER}` }}>
             <div className="text-[14px] font-medium text-gray-900 whitespace-nowrap">{trip.name}</div>
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0" style={{ borderBottom: `0.5px solid ${BORDER}` }}>
             <DayBar
               days={days}
               activeDay={activeDay}
@@ -280,21 +311,26 @@ export default function TripLayout({
           </div>
         </div>
 
-        {/* Body */}
-        <div className="flex flex-1 min-h-0 relative">
-        {/* Padded panel container — three equal-width panels with even gaps */}
-        <div
-          className="flex flex-1 min-w-0 min-h-0"
-          style={{ padding: 15, gap: 15 }}
-        >
-          {/* Left panel — stops */}
+        {/* Body — overlapping card container */}
+        <div className="flex-1 min-h-0 relative">
+
+          {/* Left panel — stops / day card */}
           <div
-            className="flex flex-col overflow-y-auto bg-white"
+            onClick={() => setFocusedPanel("stops")}
+            className="absolute flex flex-col overflow-y-auto"
             style={{
-              flex: "1 1 0",
-              minWidth: 0,
-              borderRadius: 8,
-              border: `0.5px solid ${BORDER}`,
+              top: 12,
+              bottom: 12,
+              left: panelStyles.stops.left,
+              right: panelStyles.stops.right,
+              width: panelStyles.stops.width,
+              zIndex: panelStyles.stops.zIndex,
+              transition: PANEL_TRANSITION,
+              borderRadius: 10,
+              border: `0.5px solid ${focusedPanel === "stops" ? BORDER_ACTIVE : BORDER}`,
+              backgroundColor: "white",
+              boxShadow: focusedPanel === "stops" ? SHADOW_ACTIVE : "none",
+              opacity: focusedPanel === "stops" ? 1 : 0.97,
             }}
           >
             {renderLeftPanel()}
@@ -302,12 +338,21 @@ export default function TripLayout({
 
           {/* Center — chat */}
           <div
-            className="flex flex-col min-h-0 bg-white"
+            onClick={() => setFocusedPanel("chat")}
+            className="absolute flex flex-col min-h-0"
             style={{
-              flex: "1 1 0",
-              minWidth: 0,
-              borderRadius: 8,
-              border: `0.5px solid ${BORDER}`,
+              top: 12,
+              bottom: 12,
+              left: panelStyles.chat.left,
+              right: panelStyles.chat.right,
+              width: panelStyles.chat.width,
+              zIndex: panelStyles.chat.zIndex,
+              transition: PANEL_TRANSITION,
+              borderRadius: 10,
+              border: `0.5px solid ${focusedPanel === "chat" ? BORDER_ACTIVE : BORDER}`,
+              backgroundColor: "white",
+              boxShadow: focusedPanel === "chat" ? SHADOW_ACTIVE : "none",
+              opacity: focusedPanel === "chat" ? 1 : 0.97,
               overflow: "hidden",
             }}
           >
@@ -317,105 +362,113 @@ export default function TripLayout({
 
           {/* Right panel — map */}
           <div
-            className="flex flex-col min-h-0 bg-white"
+            onClick={() => setFocusedPanel("map")}
+            className="absolute flex flex-col min-h-0"
             style={{
-              flex: "1 1 0",
-              minWidth: 0,
-              borderRadius: 8,
-              border: `0.5px solid ${BORDER}`,
+              top: 12,
+              bottom: 12,
+              left: panelStyles.map.left,
+              right: panelStyles.map.right,
+              width: panelStyles.map.width,
+              zIndex: panelStyles.map.zIndex,
+              transition: PANEL_TRANSITION,
+              borderRadius: 10,
+              border: `0.5px solid ${focusedPanel === "map" ? BORDER_ACTIVE : BORDER}`,
+              backgroundColor: "white",
+              boxShadow: focusedPanel === "map" ? SHADOW_ACTIVE : "none",
+              opacity: focusedPanel === "map" ? 1 : 0.97,
               overflow: "hidden",
             }}
           >
             {renderRightPanel()}
           </div>
-        </div>
 
-        {/* Sidebar overlay backdrop */}
-        {sidebarOpen && (
-          <div
-            className="absolute inset-0"
-            style={{ zIndex: 19, backgroundColor: "rgba(0,0,0,0.08)" }}
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {/* Sidebar overlay panel — slides over rail + left panel */}
-        <aside
-          className="absolute top-0 left-0 bottom-0 bg-white flex flex-col"
-          style={{
-            width: 220,
-            zIndex: 20,
-            borderRight: `0.5px solid ${BORDER}`,
-            transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
-            transition: "transform 0.2s ease",
-            boxShadow: sidebarOpen ? "2px 0 16px rgba(0,0,0,0.08)" : undefined,
-            pointerEvents: sidebarOpen ? "auto" : "none",
-          }}
-        >
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
-            <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Your trips</span>
-            <button
+          {/* Sidebar overlay backdrop */}
+          {sidebarOpen && (
+            <div
+              className="absolute inset-0"
+              style={{ zIndex: 19, backgroundColor: "rgba(0,0,0,0.08)" }}
               onClick={() => setSidebarOpen(false)}
-              aria-label="Close sidebar"
-              className="text-gray-400 hover:text-gray-700 text-xl leading-none w-6 h-6 flex items-center justify-center"
-            >
-              &times;
-            </button>
-          </div>
-          <div className="flex-1 overflow-y-auto py-1">
-            {trips && trips.length > 0 ? (
-              trips.map((t) => {
-                const isCurrent = t.id === trip.id;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => {
-                      setSidebarOpen(false);
-                      if (!isCurrent && onSwitchTrip) onSwitchTrip(t.id);
-                    }}
-                    className="w-full text-left px-4 py-2.5 transition-colors block"
-                    style={{ backgroundColor: isCurrent ? "#E1F5EE" : "transparent" }}
-                    onMouseEnter={(e) => {
-                      if (!isCurrent) (e.currentTarget as HTMLElement).style.backgroundColor = "#f5f5f4";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isCurrent) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
-                    }}
-                  >
-                    <div className="text-[13px] font-medium text-gray-900 truncate">{t.name}</div>
-                    {t.duration && <div className="text-[10px] text-gray-500 truncate mt-0.5">{t.duration}</div>}
-                  </button>
-                );
-              })
-            ) : (
-              <div className="px-4 py-3 text-[11px] text-gray-400">No other trips yet</div>
+            />
+          )}
+
+          {/* Sidebar overlay panel — slides over rail + left panel */}
+          <aside
+            className="absolute top-0 left-0 bottom-0 bg-white flex flex-col"
+            style={{
+              width: 220,
+              zIndex: 20,
+              borderRight: `0.5px solid ${BORDER}`,
+              transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
+              transition: "transform 0.2s ease",
+              boxShadow: sidebarOpen ? "2px 0 16px rgba(0,0,0,0.08)" : undefined,
+              pointerEvents: sidebarOpen ? "auto" : "none",
+            }}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
+              <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Your trips</span>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                aria-label="Close sidebar"
+                className="text-gray-400 hover:text-gray-700 text-xl leading-none w-6 h-6 flex items-center justify-center"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto py-1">
+              {trips && trips.length > 0 ? (
+                trips.map((t) => {
+                  const isCurrent = t.id === trip.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => {
+                        setSidebarOpen(false);
+                        if (!isCurrent && onSwitchTrip) onSwitchTrip(t.id);
+                      }}
+                      className="w-full text-left px-4 py-2.5 transition-colors block"
+                      style={{ backgroundColor: isCurrent ? "#E1F5EE" : "transparent" }}
+                      onMouseEnter={(e) => {
+                        if (!isCurrent) (e.currentTarget as HTMLElement).style.backgroundColor = "#f5f5f4";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isCurrent) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent";
+                      }}
+                    >
+                      <div className="text-[13px] font-medium text-gray-900 truncate">{t.name}</div>
+                      {t.duration && <div className="text-[10px] text-gray-500 truncate mt-0.5">{t.duration}</div>}
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="px-4 py-3 text-[11px] text-gray-400">No other trips yet</div>
+              )}
+            </div>
+            {onNewTrip && (
+              <button
+                onClick={() => {
+                  setSidebarOpen(false);
+                  onNewTrip();
+                }}
+                className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 text-[13px] font-medium text-emerald-700 hover:bg-emerald-50 transition-colors w-full flex-shrink-0"
+              >
+                <span className="text-base leading-none">+</span> New trip
+              </button>
             )}
-          </div>
-          {onNewTrip && (
-            <button
-              onClick={() => {
-                setSidebarOpen(false);
-                onNewTrip();
-              }}
-              className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 text-[13px] font-medium text-emerald-700 hover:bg-emerald-50 transition-colors w-full flex-shrink-0"
-            >
-              <span className="text-base leading-none">+</span> New trip
-            </button>
-          )}
-          {currentProfile && (
-            <button
-              onClick={() => { setSidebarOpen(false); router.push("/profile"); }}
-              className="flex items-center gap-2.5 w-full flex-shrink-0 hover:bg-gray-50 transition-colors"
-              style={{ padding: "10px 14px", borderTop: `0.5px solid ${BORDER}` }}
-            >
-              <div className="flex-shrink-0 flex items-center justify-center text-white text-[12px] font-medium"
-                style={{ width: 28, height: 28, borderRadius: "50%", backgroundColor: currentProfile.avatar_color }}>
-                {currentProfile.avatar_initial}
-              </div>
-              <span className="text-[13px] text-gray-700">Profile &amp; settings</span>
-            </button>
-          )}
-        </aside>
+            {currentProfile && (
+              <button
+                onClick={() => { setSidebarOpen(false); router.push("/profile"); }}
+                className="flex items-center gap-2.5 w-full flex-shrink-0 hover:bg-gray-50 transition-colors"
+                style={{ padding: "10px 14px", borderTop: `0.5px solid ${BORDER}` }}
+              >
+                <div className="flex-shrink-0 flex items-center justify-center text-white text-[12px] font-medium"
+                  style={{ width: 28, height: 28, borderRadius: "50%", backgroundColor: currentProfile.avatar_color }}>
+                  {currentProfile.avatar_initial}
+                </div>
+                <span className="text-[13px] text-gray-700">Profile &amp; settings</span>
+              </button>
+            )}
+          </aside>
         </div>
       </div>
     </div>
