@@ -1158,7 +1158,7 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
 
       {chatMessages.length === 0 && days.length > 0 && (
         <div className="flex flex-wrap gap-1.5 px-4 pb-2 flex-shrink-0">
-          {getPromptChips(trip).map(chip => (
+          {getPromptChips(trip, days[activeDay] || null, currentDayStops).map(chip => (
             <button
               key={chip}
               onClick={() => handleChatSend(chip)}
