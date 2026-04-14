@@ -13,10 +13,9 @@
 
 ---
 
-## TARGET 1 — Claude's Voice & Personality
+## TARGET 1 — Claude's Voice & Personality ✅ COMPLETE
 *The real differentiator. Claude as a travel agent with taste, not an assistant returning data.*
 
-### Done:
 - [x] **1.1 — Rewrite core system prompt as personality document**
   - CO_PILOT_PERSONALITY constant — character brief covering voice, relationship, situation handling
   - Anchors every response regardless of trip, day, or tool call
@@ -30,19 +29,26 @@
   - Layer 2: OPERATIONAL_RULES (tool use, edge cases)
   - buildSystemPrompt assembles 5 priority layers
 
-### Remaining:
-- [ ] **1.4 — Redesign the curating prompt to generate voice, not just data**
-  - File: src/app/trip/[tripId]/curating/page.tsx
-  - trip_summary, day narrative, stop descriptions, and ai_note all need personality injection
-  - Inject CO_PILOT_PERSONALITY into curating prompt so initial generation matches conversational voice
+- [x] **1.4 — Redesign the curating prompt to generate voice, not just data**
+  - Rewrote curating/page.tsx system prompt with Co-Pilot personality
+  - Added FIELD VOICE GUIDE for trip_summary, narrative, reasoning, description, ai_note
+  - Loading screen copy now personality-aligned ("Walking the streets of X in my head")
 
-- [ ] **1.5 — Make tool call responses feel like a person, not a system**
-  - Test current personality doc's effect on tool-adjacent text responses
-  - May need post-tool-call prompt reinforcement
+- [x] **1.5 — Make tool call responses feel like a person, not a system**
+  - Covered by OPERATIONAL_RULES in personality doc: "your text response should feel like a person explaining what they just did"
+  - executeToolCall return strings are internal only — Claude's text response is what users see
+  - Status: test and observe — if voice regresses around tool calls, add reinforcement
 
-- [ ] **1.6 — Add voice guide for common interaction patterns**
-  - Expand situation handlers with concrete example responses as tonal anchors
-  - Lower priority — test 1.1-1.4 first
+- [x] **1.6 — Add voice calibration examples**
+  - Added 4 concrete GOOD/BAD example pairs to CO_PILOT_PERSONALITY
+  - Covers: restaurant recs, trimming a packed day, rain contingency, post-dinner suggestions
+  - Prevents regression to generic assistant register
+
+### Remaining note:
+- [ ] **1.7 — Update ITINERARY_SYSTEM_PROMPT in page.tsx (chat-based generation)**
+  - The prompt in page.tsx used when someone types a trip directly in chat (bypassing intake flow) still has the old generic voice
+  - Lower priority since most users go through intake → curating flow
+  - Use replace_in_file in a new chat session to update
 
 ---
 
