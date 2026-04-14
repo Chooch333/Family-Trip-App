@@ -15,6 +15,62 @@ function generateDayColors(count: number): string[] {
   });
 }
 
+function buildGroupDescription(trip: Trip): string {
+  const groupType = (trip.group_type || "").toLowerCase();
+  const detail = trip.group_detail || "";
+  if (groupType === "solo") return detail || "a solo traveler";
+  if (groupType === "couple") return detail || "a couple";
+  if (groupType === "friends") return detail || "a group of friends";
+  if (groupType === "family") {
+    if (detail) return `a family — ${detail}`;
+    return "a family";
+  }
+  return detail || "travelers";
+}
+
+function buildCurationPrompt(trip: Trip): { userPrompt: string; systemPrompt: string } {
+  const dest = trip.destination || trip.name;
+  const group = buildGroupDescription(trip);
+  const durDays = trip.duration === "Weekend" ? "3" : trip.duration === "Short trip" ? "5" : trip.duration === "Full week" ? "7" : trip.duration === "Extended" ? "10" : trip.duration || "7";
+
+  const userPrompt = `Build me a ${trip.duration || durDays + " day"} trip to ${dest} for ${group}.${trip.travel_dates ? ` We're going ${trip.travel_dates}.` : ""}${trip.interests ? ` We're into ${trip.interests}.` : ""}${trip.extra_notes ? ` Also: ${trip.extra_notes}.` : ""} Make it incredible.`;
+
+  const systemPrompt = `You are this trip's Co-Pilot — the friend who's already been to ${dest} and has strong opinions about all of it. You've walked these streets, eaten at these restaurants, and you know which "must-see" spots are actually worth the line and which ones you'd skip for something better around the corner.
+
+You're building a trip for ${group}. You know who they are. Every choice you make should feel like it was made for THEM specifically — not a generic "top 10" list. When you describe a stop, write like you're standing outside it with the family, pointing at the door, telling them why you brought them here.
+
+You MUST respond with a JSON code block wrapped in \`\`\`json and \`\`\` markers.
+
+JSON format:
+{"trip_summary":"...","days":[{"day_number":1,"title":"City/area","narrative":"...","reasoning":"...","stops":[{"name":"Place","description":"...","ai_note":"...","stop_type":"visit","latitude":0.0,"longitude":0.0,"start_time":"9:00 AM","duration_minutes":90,"cost_estimate":0}]}]}
+
+FIELD VOICE GUIDE:
+
+trip_summary: Your opening pitch to the family. 3-4 sentences that make them feel the trip before they see the details. Not a table of contents — an emotional preview. "You're going to fall in love with this country. The first few days are about getting your bearings in Rome — ancient stuff in the morning while the kids have energy, long lunches in piazzas, gelato on every corner. Then we head north to Tuscany where things slow way down."
+
+narrative (per day): How you'd brief the family at breakfast. Set the energy, the theme, what makes today different from yesterday. "Okay, today's the big one — Colosseum, Forum, the whole ancient Rome experience. We're hitting it early before the crowds and the heat. Afternoon is deliberately chill because everyone's going to need it."
+
+reasoning (per day): Your internal logic made visible. What are the anchors, why this order, what trade-offs you considered. "The Colosseum first thing is non-negotiable — the line triples by 10am. I put lunch near the Pantheon because it's on the walk back and the piazza is perfect for kids to run around. Afternoon is light because Day 1 jet lag is real."
+
+description (per stop): Why THIS stop for THIS family. Not what it is — why it matters to them. Use sensory details. "The gelato place on the corner of Via dei Giubbonari — the owner makes it fresh in the window and the kids will press their faces against the glass picking flavors. Get the pistachio, trust me." Never write "popular attraction" or "highly rated."
+
+ai_note (per stop): Your most personal take. Why you picked THIS over the alternatives. "I chose this over the more famous place down the street because there's no line, it's half the price, and honestly the view is better." This should feel like a whispered aside, not a data point.
+
+STRUCTURAL RULES:
+- ${durDays} days, 4-7 stops per day
+- Real latitude/longitude for every non-transit stop
+- stop_type: visit, food, transit, walk_by, guided_tour
+- Transit stops for inter-city travel (no coordinates needed)
+- 12-hour AM/PM times (e.g. "9:00 AM", "2:30 PM")
+- Include food stops for meals — and have opinions about them
+- Every stop needs a description AND an ai_note
+- Every day needs a narrative AND a reasoning field
+- Include a trip_summary at the top level
+${trip.travel_dates ? `- Travel dates: ${trip.travel_dates}. Factor in weather, seasonal closures, holidays, local events, and what the destination actually feels like at that time of year.` : ""}`;
+
+  return { userPrompt, systemPrompt };
+}
+
 export default function CuratingPage() {
   const router = useRouter();
   const params = useParams();
@@ -29,57 +85,28 @@ export default function CuratingPage() {
     startedRef.current = true;
 
     async function curate() {
-      // Auth check
       const m = await getMemberForTrip(tripId);
       if (!m) { router.replace(`/trip/${tripId}/invite`); return; }
       setMember(m);
 
-      // Load trip
       const { data: tripData } = await supabase.from("trips").select("*").eq("id", tripId).maybeSingle();
       if (!tripData) { setError("Trip not found."); return; }
       const t = tripData as Trip;
       setTrip(t);
 
-      // Check if already curated (has days)
       const { count } = await supabase.from("days").select("*", { count: "exact", head: true }).eq("trip_id", tripId);
       if (count && count > 0) {
         router.push(`/trip/${tripId}`);
         return;
       }
 
-      // Build the curation prompt
-      const groupDesc = t.group_type === "Solo" ? (t.group_detail || "solo traveler") :
-        t.group_type === "Friends" ? (t.group_detail || "group of friends") :
-        t.group_type === "Family" ? `family with ${t.group_detail || "kids"}` : "travelers";
-      const durDays = t.duration === "Weekend" ? "3" : t.duration === "Short trip" ? "5" : t.duration === "Full week" ? "7" : t.duration === "Extended" ? "10" : t.duration || "7";
-      const interestStr = t.interests ? `Interests: ${t.interests}.` : "";
-      const datesStr = t.travel_dates ? `Travel dates: ${t.travel_dates}.` : "";
-      const notesStr = t.extra_notes ? `Additional notes: ${t.extra_notes}.` : "";
-      const prompt = `Plan a ${t.duration || durDays + " day"} trip to ${t.destination || t.name} for ${groupDesc}. ${datesStr} ${interestStr} ${notesStr} Make it amazing.`;
-
-      const systemPrompt = `You are a family trip planning assistant. Generate a complete, fully curated day-by-day itinerary.
-You MUST respond with a JSON code block wrapped in \`\`\`json and \`\`\` markers.
-The JSON format:
-{"trip_summary":"An exciting 3-4 sentence paragraph summarizing the whole trip.","days":[{"day_number":1,"title":"City/area","narrative":"2-3 sentences setting the tone.","reasoning":"Why you built this day this way — what the anchors are, why this order, what trade-offs you considered. 2-3 sentences.","stops":[{"name":"Place","description":"Why this is great for this group.","ai_note":"One sentence on why Claude picked this stop specifically.","stop_type":"visit","latitude":0.0,"longitude":0.0,"start_time":"9:00 AM","duration_minutes":90,"cost_estimate":0}]}]}
-Rules:
-- ${durDays} days, 4-7 stops per day
-- Real coordinates for non-transit stops
-- stop_type: visit, food, transit, walk_by, guided_tour
-- Transit stops for inter-city travel (no coordinates needed)
-- 12-hour AM/PM times
-- Every stop needs an engaging description for ${groupDesc}
-- Every stop needs an ai_note — a single sentence explaining why Claude chose it
-- Each day needs a narrative AND a reasoning field
-- Include a trip_summary at the top level
-- Include food stops for meals
-- All days are fully curated — mark every day with high confidence
-${t.travel_dates ? `- Travel dates: ${t.travel_dates}. Factor in weather, seasonal closures, holidays, local events, peak/off-season pricing, and seasonal activities.` : ""}`;
+      const { userPrompt, systemPrompt } = buildCurationPrompt(t);
 
       try {
         const res = await fetch("/api/ai/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [{ role: "user", content: prompt }], systemPrompt, max_tokens: 16384 }),
+          body: JSON.stringify({ messages: [{ role: "user", content: userPrompt }], systemPrompt, max_tokens: 16384 }),
         });
         const data = await res.json();
         const contentBlocks: Array<{ type: string; text?: string }> = Array.isArray(data.content) ? data.content : [];
@@ -89,7 +116,6 @@ ${t.travel_dates ? `- Travel dates: ${t.travel_dates}. Factor in weather, season
         if (jsonMatch) {
           const itinerary = JSON.parse(jsonMatch[1]);
 
-          // Save trip_summary
           if (itinerary.trip_summary) {
             await supabase.from("trips").update({ trip_summary: itinerary.trip_summary }).eq("id", tripId);
           }
@@ -143,15 +169,17 @@ ${t.travel_dates ? `- Travel dates: ${t.travel_dates}. Factor in weather, season
     curate();
   }, [tripId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Build progress steps from intake
+  // Progress steps — personality-aligned
+  const dest = trip?.destination || "your destination";
   const progressSteps = [
-    "Checking must-see landmarks",
-    "Researching weather and crowds",
-    ...((trip?.extra_notes || "").toLowerCase().match(/food|restaurant|eat|cuisine/) ? ["Finding the best food spots"] : []),
-    ...((trip?.interests || "").toLowerCase().match(/history|museum|heritage/) ? ["Curating historical sites"] : []),
-    ...(trip?.group_type === "Family" ? ["Filtering for family-friendly options"] : []),
-    ...((trip?.extra_notes || "").toLowerCase().match(/dog|pet/) ? ["Finding pet-friendly venues"] : []),
-    "Building day-by-day draft",
+    `Walking the streets of ${dest} in my head`,
+    "Checking what's actually worth the hype",
+    ...((trip?.extra_notes || "").toLowerCase().match(/food|restaurant|eat|cuisine/) ? ["Calling in some food recommendations"] : []),
+    ...((trip?.interests || "").toLowerCase().match(/history|museum|heritage/) ? ["Digging up the history worth knowing"] : []),
+    ...(trip?.group_type === "Family" ? ["Making sure every stop works for the kids"] : []),
+    ...((trip?.extra_notes || "").toLowerCase().match(/dog|pet/) ? ["Sniffing out the dog-friendly spots"] : []),
+    "Putting the days in the right order",
+    "Almost ready — just tightening a few things",
   ];
 
   if (error) return (
@@ -164,9 +192,9 @@ ${t.travel_dates ? `- Travel dates: ${t.travel_dates}. Factor in weather, season
     <div className="h-screen flex items-center justify-center bg-white">
       <div className="text-center max-w-sm mx-auto px-4">
         <div className="w-12 h-12 rounded-full border-[3px] border-gray-200 border-t-emerald-500 animate-spin mx-auto mb-6" />
-        <p className="text-[18px] font-semibold text-gray-900 mb-2">Claude is curating your trip</p>
+        <p className="text-[18px] font-semibold text-gray-900 mb-2">Your Co-Pilot is building your trip</p>
         <p className="text-[13px] text-gray-500 mb-6">
-          Researching {trip?.destination || "your destination"}{trip?.travel_dates ? ` in ${trip.travel_dates}` : ""} for your {trip?.group_type?.toLowerCase() || "group"}...
+          Putting together {dest}{trip?.travel_dates ? ` for ${trip.travel_dates}` : ""} — this takes a minute because I'm being picky.
         </p>
         <div className="flex flex-col gap-2.5 text-left">
           {progressSteps.map((step, i) => (
