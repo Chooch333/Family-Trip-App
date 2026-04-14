@@ -347,9 +347,9 @@ export default function TripLayout({
             zIndex: 20,
             borderRight: `0.5px solid ${BORDER}`,
             transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
-            transition: "transform 0.2s",
+            transition: "transform 0.2s ease",
             boxShadow: sidebarOpen ? "2px 0 16px rgba(0,0,0,0.08)" : undefined,
-            visibility: sidebarOpen ? "visible" : "hidden",
+            pointerEvents: sidebarOpen ? "auto" : "none",
           }}
         >
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
