@@ -59,15 +59,16 @@
   - File: src/app/trip/[tripId]/page.tsx
 
 ### Remaining:
-- [ ] **2.4 — Anchoring: teach Claude about anchored stops**
-  - Update claude.ts system prompt: never touch anchored stops when trimming
-  - Claude acknowledges anchors: "I kept the Colosseum locked in and rebuilt around it"
-  - Claude proactively suggests anchoring stops it's confident about
+- [x] **2.4 — Anchoring: teach Claude about anchored stops**
+  - Updated claude.ts OPERATIONAL_RULES with anchoring behavior
+  - Claude never touches anchored stops when trimming
+  - Claude acknowledges anchors and proactively suggests anchoring
+  - Itinerary state now shows ⚓ ANCHORED marker for anchored stops
 
-- [ ] **2.5 — Anchoring: Claude sets anchors during initial curation**
-  - Update curating/page.tsx prompt to have Claude mark is_anchor on confident stops
-  - Update JSON schema in curation prompt to include is_anchor field
-  - Without this, tour slideshow anchor/flexible badges have no real data
+- [x] **2.5 — Anchoring: Claude sets anchors during initial curation**
+  - Added is_anchor to JSON schema and StopData interface in curating prompt
+  - Claude instructed to anchor 1-3 stops per day it's most confident about
+  - is_anchor saved to Supabase during curation insert
 
 ### Future optimizations (not blocking):
 - [ ] Map cinematic animation during loading (pins drop as coordinates arrive)
