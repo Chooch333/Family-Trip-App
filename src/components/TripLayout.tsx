@@ -40,52 +40,49 @@ const RAIL_BG = "#f7f7f4";
 const BORDER = "#e5e7eb";
 const BORDER_ACTIVE = "#d1d5db";
 const SHADOW_ACTIVE = "0 8px 32px rgba(0,0,0,0.12)";
+const SHADOW_RESTING = "0 2px 8px rgba(0,0,0,0.06)";
 const PANEL_TRANSITION = "all 0.35s cubic-bezier(0.4, 0, 0.2, 1)";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PANEL LAYOUT
+// PANEL LAYOUT — Three overlapping cards with click-to-focus
 //
-// Three overlapping cards on a shared canvas. Chat is ALWAYS in the center
-// and ALWAYS behind both side panels (z-index 1). The day card and map
-// overlap the chat edges by ~18px and sit above it.
+// Any card can be focused. The focused card gets z:3 and active styling.
+// The other two sit behind. Chat starts focused (default).
 //
-// focusedPanel = null  → resting state, both side panels at 35%
-// focusedPanel = 'stops' → day card expands to 45%, map shrinks to 30%
-// focusedPanel = 'map'   → map expands to 45%, day card shrinks to 30%
+// Chat focused (default):
+//   stops 33% z:1 | chat 36% z:3 | map 33% z:2
+//
+// Stops focused:
+//   stops 45% z:3 | chat 36% z:1 | map 30% z:2
+//
+// Map focused:
+//   stops 30% z:2 | chat 36% z:1 | map 45% z:3
 // ─────────────────────────────────────────────────────────────────────────────
 
-type FocusedPanel = "stops" | "map" | null;
+type FocusedPanel = "stops" | "chat" | "map";
 
 function getPanelStyles(focused: FocusedPanel) {
-  // Chat is always centered, always z:1, always the same size
-  const chat = {
-    width: "36%",
-    left: "32%",
-    right: "auto",
-    zIndex: 1,
-  };
-
   if (focused === "stops") {
     return {
-      stops: { width: "45%", left: 12, right: "auto", zIndex: 3 },
-      chat,
-      map:   { width: "30%", left: "auto", right: 12, zIndex: 2 },
+      stops: { width: "45%", left: 12, right: "auto" as const, zIndex: 3 },
+      chat:  { width: "36%", left: "32%", right: "auto" as const, zIndex: 1 },
+      map:   { width: "30%", left: "auto" as const, right: 12, zIndex: 2 },
     };
   }
 
   if (focused === "map") {
     return {
-      stops: { width: "30%", left: 12, right: "auto", zIndex: 2 },
-      chat,
-      map:   { width: "45%", left: "auto", right: 12, zIndex: 3 },
+      stops: { width: "30%", left: 12, right: "auto" as const, zIndex: 2 },
+      chat:  { width: "36%", left: "32%", right: "auto" as const, zIndex: 1 },
+      map:   { width: "45%", left: "auto" as const, right: 12, zIndex: 3 },
     };
   }
 
-  // Resting — both side panels at 35%, overlapping chat edges
+  // Chat focused (default) — chat in front, side panels behind overlapping edges
   return {
-    stops: { width: "35%", left: 12, right: "auto", zIndex: 2 },
-    chat,
-    map:   { width: "35%", left: "auto", right: 12, zIndex: 2 },
+    stops: { width: "33%", left: 12, right: "auto" as const, zIndex: 1 },
+    chat:  { width: "36%", left: "32%", right: "auto" as const, zIndex: 3 },
+    map:   { width: "33%", left: "auto" as const, right: 12, zIndex: 2 },
   };
 }
 
@@ -107,7 +104,7 @@ export default function TripLayout({
 }: TripLayoutProps) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [focusedPanel, setFocusedPanel] = useState<FocusedPanel>(null);
+  const [focusedPanel, setFocusedPanel] = useState<FocusedPanel>("chat");
   const [avatarPopover, setAvatarPopover] = useState(false);
   const [switchUserMode, setSwitchUserMode] = useState(false);
   const [switchEmail, setSwitchEmail] = useState("");
@@ -116,7 +113,6 @@ export default function TripLayout({
   const popoverRef = useRef<HTMLDivElement>(null);
   const avatarBtnRef = useRef<HTMLButtonElement>(null);
 
-  // Close popover on outside click
   useEffect(() => {
     if (!avatarPopover) return;
     function handleClick(e: MouseEvent) {
@@ -132,7 +128,6 @@ export default function TripLayout({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [avatarPopover]);
 
-  // Switch user email search
   useEffect(() => {
     if (!switchUserMode || switchEmail.length < 2) { setSwitchSuggestions([]); setSwitchError(""); return; }
     const timeout = setTimeout(async () => {
@@ -157,13 +152,9 @@ export default function TripLayout({
   const railTrips = (trips || []).slice(0, 4);
   const panelStyles = getPanelStyles(focusedPanel);
 
-  // Click handlers: toggle focus. Click focused panel → unfocus (resting).
-  function handleStopsClick() {
-    setFocusedPanel((prev) => (prev === "stops" ? null : "stops"));
-  }
-  function handleMapClick() {
-    setFocusedPanel((prev) => (prev === "map" ? null : "map"));
-  }
+  const stopsIsFocused = focusedPanel === "stops";
+  const chatIsFocused = focusedPanel === "chat";
+  const mapIsFocused = focusedPanel === "map";
 
   function tripInitial(name: string): string {
     const trimmed = name.trim();
@@ -171,27 +162,15 @@ export default function TripLayout({
     return trimmed.charAt(0).toUpperCase();
   }
 
-  const stopsIsFocused = focusedPanel === "stops";
-  const mapIsFocused = focusedPanel === "map";
-
   return (
     <div className="h-screen flex flex-row overflow-hidden relative" style={{ backgroundColor: "#f0f0ec" }}>
       {/* Sidebar collapsed rail */}
       <div
         className="flex-shrink-0 flex flex-col items-center py-2 gap-2"
-        style={{
-          width: 48,
-          backgroundColor: RAIL_BG,
-          borderRight: `0.5px solid ${BORDER}`,
-          position: "relative",
-          zIndex: 20,
-        }}
+        style={{ width: 48, backgroundColor: RAIL_BG, borderRight: `0.5px solid ${BORDER}`, position: "relative", zIndex: 20 }}
       >
-        <button
-          onClick={() => setSidebarOpen((o) => !o)}
-          aria-label="Open sidebar"
-          className="w-9 h-9 rounded-md flex items-center justify-center hover:bg-gray-200/60 transition-colors flex-shrink-0"
-        >
+        <button onClick={() => setSidebarOpen((o) => !o)} aria-label="Open sidebar"
+          className="w-9 h-9 rounded-md flex items-center justify-center hover:bg-gray-200/60 transition-colors flex-shrink-0">
           <svg width="18" height="13" viewBox="0 0 20 14" fill="none">
             <line x1="0" y1="2" x2="20" y2="2" stroke="#444" strokeWidth="1.6" strokeLinecap="round" />
             <line x1="0" y1="7" x2="20" y2="7" stroke="#444" strokeWidth="1.6" strokeLinecap="round" />
@@ -203,17 +182,11 @@ export default function TripLayout({
           {railTrips.map((t) => {
             const isCurrent = t.id === trip.id;
             return (
-              <button
-                key={t.id}
-                onClick={() => { if (!isCurrent && onSwitchTrip) onSwitchTrip(t.id); }}
+              <button key={t.id} onClick={() => { if (!isCurrent && onSwitchTrip) onSwitchTrip(t.id); }}
                 title={t.name}
                 className="relative flex-shrink-0 flex items-center justify-center text-white text-[12px] font-semibold transition-transform hover:scale-105"
-                style={{
-                  width: 32, height: 32, borderRadius: "50%",
-                  backgroundColor: isCurrent ? activeDayColor : "#9ca3af",
-                  boxShadow: isCurrent ? "0 0 0 2px #fff, 0 0 0 3.5px " + activeDayColor : undefined,
-                }}
-              >
+                style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: isCurrent ? activeDayColor : "#9ca3af",
+                  boxShadow: isCurrent ? "0 0 0 2px #fff, 0 0 0 3.5px " + activeDayColor : undefined }}>
                 {tripInitial(t.name)}
               </button>
             );
@@ -221,28 +194,18 @@ export default function TripLayout({
         </div>
         {currentProfile && (
           <div className="relative" style={{ marginTop: "auto", marginBottom: 12 }}>
-            <button
-              ref={avatarBtnRef}
+            <button ref={avatarBtnRef}
               onClick={() => { setAvatarPopover(o => !o); setSwitchUserMode(false); setSwitchEmail(""); setSwitchSuggestions([]); setSwitchError(""); }}
               title={currentProfile.display_name}
               className="flex items-center justify-center text-white text-[13px] font-medium transition-colors"
               style={{ width: 32, height: 32, borderRadius: "50%", backgroundColor: currentProfile.avatar_color, border: "2px solid white" }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = BORDER; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "white"; }}
-            >
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "white"; }}>
               {currentProfile.avatar_initial}
             </button>
             {avatarPopover && (
-              <div
-                ref={popoverRef}
-                style={{
-                  position: "absolute", bottom: "calc(100% + 8px)", left: 0,
-                  width: 220, backgroundColor: "white",
-                  border: `0.5px solid ${BORDER}`, borderRadius: 10,
-                  boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 30,
-                  padding: "8px 0",
-                }}
-              >
+              <div ref={popoverRef} style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, width: 220, backgroundColor: "white",
+                border: `0.5px solid ${BORDER}`, borderRadius: 10, boxShadow: "0 4px 16px rgba(0,0,0,0.12)", zIndex: 30, padding: "8px 0" }}>
                 <div style={{ padding: "10px 14px", borderBottom: `0.5px solid ${BORDER}` }} className="flex items-center gap-2.5">
                   <div className="flex-shrink-0 flex items-center justify-center text-white text-[12px] font-medium"
                     style={{ width: 28, height: 28, borderRadius: "50%", backgroundColor: currentProfile.avatar_color }}>
@@ -277,9 +240,7 @@ export default function TripLayout({
                           <button key={s.id} onClick={() => handleSwitchToProfile(s.id)}
                             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-gray-50 transition-colors text-left">
                             <div className="flex-shrink-0 flex items-center justify-center text-white text-[10px] font-medium"
-                              style={{ width: 24, height: 24, borderRadius: "50%", backgroundColor: s.avatar_color }}>
-                              {s.avatar_initial}
-                            </div>
+                              style={{ width: 24, height: 24, borderRadius: "50%", backgroundColor: s.avatar_color }}>{s.avatar_initial}</div>
                             <div className="min-w-0">
                               <div className="text-[12px] font-medium text-gray-900 truncate">{s.display_name}</div>
                               <div className="text-[11px] text-gray-500 truncate">{s.email}</div>
@@ -301,7 +262,6 @@ export default function TripLayout({
 
       {/* Right side — top bar + body */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0">
-        {/* Top bar — trip name + day bar */}
         <div className="flex items-stretch flex-shrink-0" style={{ backgroundColor: "#f0f0ec" }}>
           <div className="flex items-center pl-3 pr-4" style={{ borderBottom: `0.5px solid ${BORDER}` }}>
             <div className="text-[14px] font-medium text-gray-900 whitespace-nowrap">{trip.name}</div>
@@ -314,27 +274,9 @@ export default function TripLayout({
         {/* Body — overlapping card container */}
         <div className="flex-1 min-h-0 relative">
 
-          {/* CENTER — Chat (always z:1, always behind both side panels) */}
+          {/* LEFT — Stops / Day card */}
           <div
-            className="absolute flex flex-col min-h-0"
-            style={{
-              top: 12, bottom: 12,
-              left: panelStyles.chat.left,
-              width: panelStyles.chat.width,
-              zIndex: panelStyles.chat.zIndex,
-              borderRadius: 10,
-              border: `0.5px solid ${BORDER}`,
-              backgroundColor: "white",
-              overflow: "hidden",
-            }}
-          >
-            {renderChatOverlay && renderChatOverlay()}
-            {renderChat()}
-          </div>
-
-          {/* LEFT — Stops / Day card (always above chat, expands on click) */}
-          <div
-            onClick={handleStopsClick}
+            onClick={() => setFocusedPanel("stops")}
             className="absolute flex flex-col overflow-y-auto"
             style={{
               top: 12, bottom: 12,
@@ -345,16 +287,38 @@ export default function TripLayout({
               borderRadius: 10,
               border: `0.5px solid ${stopsIsFocused ? BORDER_ACTIVE : BORDER}`,
               backgroundColor: "white",
-              boxShadow: stopsIsFocused ? SHADOW_ACTIVE : "0 2px 8px rgba(0,0,0,0.06)",
+              boxShadow: stopsIsFocused ? SHADOW_ACTIVE : SHADOW_RESTING,
               cursor: "pointer",
             }}
           >
             {renderLeftPanel()}
           </div>
 
-          {/* RIGHT — Map (always above chat, expands on click) */}
+          {/* CENTER — Chat */}
           <div
-            onClick={handleMapClick}
+            onClick={() => setFocusedPanel("chat")}
+            className="absolute flex flex-col min-h-0"
+            style={{
+              top: 12, bottom: 12,
+              left: panelStyles.chat.left,
+              width: panelStyles.chat.width,
+              zIndex: panelStyles.chat.zIndex,
+              transition: PANEL_TRANSITION,
+              borderRadius: 10,
+              border: `0.5px solid ${chatIsFocused ? BORDER_ACTIVE : BORDER}`,
+              backgroundColor: "white",
+              boxShadow: chatIsFocused ? SHADOW_ACTIVE : "none",
+              overflow: "hidden",
+              cursor: "pointer",
+            }}
+          >
+            {renderChatOverlay && renderChatOverlay()}
+            {renderChat()}
+          </div>
+
+          {/* RIGHT — Map */}
+          <div
+            onClick={() => setFocusedPanel("map")}
             className="absolute flex flex-col min-h-0"
             style={{
               top: 12, bottom: 12,
@@ -365,7 +329,7 @@ export default function TripLayout({
               borderRadius: 10,
               border: `0.5px solid ${mapIsFocused ? BORDER_ACTIVE : BORDER}`,
               backgroundColor: "white",
-              boxShadow: mapIsFocused ? SHADOW_ACTIVE : "0 2px 8px rgba(0,0,0,0.06)",
+              boxShadow: mapIsFocused ? SHADOW_ACTIVE : SHADOW_RESTING,
               overflow: "hidden",
               cursor: "pointer",
             }}
@@ -378,25 +342,16 @@ export default function TripLayout({
 
       {/* Sidebar backdrop */}
       {sidebarOpen && (
-        <div
-          className="absolute top-0 bottom-0"
+        <div className="absolute top-0 bottom-0"
           style={{ left: 48, right: 0, zIndex: 14, backgroundColor: "rgba(0,0,0,0.08)" }}
-          onClick={() => setSidebarOpen(false)}
-        />
+          onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar panel */}
-      <aside
-        className="absolute top-0 bottom-0 bg-white flex flex-col"
-        style={{
-          left: 0, width: 48 + 220, paddingLeft: 48, zIndex: 15,
-          borderRight: `0.5px solid ${BORDER}`,
-          transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
-          transition: "transform 0.2s ease",
-          boxShadow: sidebarOpen ? "2px 0 16px rgba(0,0,0,0.08)" : undefined,
-          pointerEvents: sidebarOpen ? "auto" : "none",
-        }}
-      >
+      <aside className="absolute top-0 bottom-0 bg-white flex flex-col"
+        style={{ left: 0, width: 48 + 220, paddingLeft: 48, zIndex: 15, borderRight: `0.5px solid ${BORDER}`,
+          transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)", transition: "transform 0.2s ease",
+          boxShadow: sidebarOpen ? "2px 0 16px rgba(0,0,0,0.08)" : undefined, pointerEvents: sidebarOpen ? "auto" : "none" }}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
           <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Your trips</span>
           <button onClick={() => setSidebarOpen(false)} aria-label="Close sidebar"
@@ -412,8 +367,7 @@ export default function TripLayout({
                   className="w-full text-left px-4 py-2.5 transition-colors block"
                   style={{ backgroundColor: isCurrent ? "#E1F5EE" : "transparent" }}
                   onMouseEnter={(e) => { if (!isCurrent) (e.currentTarget as HTMLElement).style.backgroundColor = "#f5f5f4"; }}
-                  onMouseLeave={(e) => { if (!isCurrent) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}
-                >
+                  onMouseLeave={(e) => { if (!isCurrent) (e.currentTarget as HTMLElement).style.backgroundColor = "transparent"; }}>
                   <div className="text-[13px] font-medium text-gray-900 truncate">{t.name}</div>
                   {t.duration && <div className="text-[10px] text-gray-500 truncate mt-0.5">{t.duration}</div>}
                 </button>
