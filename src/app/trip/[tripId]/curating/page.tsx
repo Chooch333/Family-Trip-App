@@ -266,40 +266,52 @@ export default function CuratingPage() {
   // loading → cinematic → tour → workspace (never backwards)
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
+  const cinematicStartRef = useRef<number>(0);
 
   // Loading → cinematic after brief delay
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (phaseRef.current === "loading") setPhase("cinematic");
+      if (phaseRef.current === "loading") {
+        cinematicStartRef.current = Date.now();
+        setPhase("cinematic");
+      }
     }, 2000);
     return () => clearTimeout(timer);
   }, []);
 
-  // Cinematic → tour when BOTH conditions met:
-  //   1. At least 75% of days generated
-  //   2. Generation is fully done (trip_summary written)
+  // Cinematic → tour when generation is done + minimum display time elapsed
+  // Minimum 10s on cinematic: map reveal (~2s) + pins (~2s) + zoom (3.5s) + pause (2.5s)
   useEffect(() => {
     if (phase !== "cinematic" || !generationDone) return;
-    // Load final data from Supabase for the tour
-    (async () => {
-      const [tripRes, daysRes, stopsRes] = await Promise.all([
-        supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
-        supabase.from("days").select("*").eq("trip_id", tripId).order("day_number"),
-        supabase.from("stops").select("*").eq("trip_id", tripId).is("version_owner", null).order("sort_order"),
-      ]);
-      if (tripRes.data && daysRes.data && stopsRes.data) {
-        const loadedDays = daysRes.data as Day[];
-        setTourData({
-          trip: tripRes.data as Trip,
-          days: loadedDays,
-          stops: stopsRes.data as Stop[],
-          dayColors: generateDayColors(loadedDays.length),
-        });
-        if (phaseRef.current === "cinematic") {
-          setPhase("tour");
+
+    const elapsed = Date.now() - cinematicStartRef.current;
+    const minDuration = 10000;
+    const remaining = Math.max(0, minDuration - elapsed);
+
+    const timer = setTimeout(() => {
+      // Load final data from Supabase for the tour
+      (async () => {
+        const [tripRes, daysRes, stopsRes] = await Promise.all([
+          supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
+          supabase.from("days").select("*").eq("trip_id", tripId).order("day_number"),
+          supabase.from("stops").select("*").eq("trip_id", tripId).is("version_owner", null).order("sort_order"),
+        ]);
+        if (tripRes.data && daysRes.data && stopsRes.data) {
+          const loadedDays = daysRes.data as Day[];
+          setTourData({
+            trip: tripRes.data as Trip,
+            days: loadedDays,
+            stops: stopsRes.data as Stop[],
+            dayColors: generateDayColors(loadedDays.length),
+          });
+          if (phaseRef.current === "cinematic") {
+            setPhase("tour");
+          }
         }
-      }
-    })();
+      })();
+    }, remaining);
+
+    return () => clearTimeout(timer);
   }, [phase, generationDone, tripId]);
 
   // Handle tour completion — always redirect, never go back
