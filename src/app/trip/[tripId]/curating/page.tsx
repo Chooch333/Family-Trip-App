@@ -73,6 +73,7 @@ interface StopData {
   name: string;
   description?: string;
   ai_note?: string;
+  is_anchor?: boolean;
   latitude?: number;
   longitude?: number;
   start_time?: string;
