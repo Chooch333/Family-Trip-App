@@ -299,6 +299,7 @@ function buildSlides(
         label: arrivalLabel, labelColor: "#D85A30",
         headline: city.city,
         body: cityDays[0]?.narrative || `${cityDays.length} day${cityDays.length > 1 ? "s" : ""} in ${city.city}.`,
+        images: tripImages.length >= 2 ? tripImages.slice(0, 2) : undefined,
       });
     }
     if (bestAnchor) {
