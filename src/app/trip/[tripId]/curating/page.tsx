@@ -409,14 +409,12 @@ export default function CuratingPage() {
       <div className="text-center max-w-sm mx-auto px-4">
         <div className="w-12 h-12 rounded-full border-[3px] border-gray-700 border-t-emerald-500 animate-spin mx-auto mb-6" />
         <p style={{ fontSize: 18, fontWeight: 600, color: "white", marginBottom: 8 }}>
-          {tourData ? "Finishing up..." : "Your Co-Pilot is building your trip"}
+          Building your trip
         </p>
         <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginBottom: 16 }}>
-          {tourData
-            ? "Just a few more seconds."
-            : `Putting together ${dest}${trip?.travel_dates ? ` for ${trip.travel_dates}` : ""}`}
+          {`Putting together ${dest}${trip?.travel_dates ? ` for ${trip.travel_dates}` : ""}`}
         </p>
-        {totalDays > 0 && !tourData && (
+        {totalDays > 0 && (
           <div style={{ width: "100%", height: 3, background: "rgba(255,255,255,0.1)", borderRadius: 2, overflow: "hidden" }}>
             <div style={{ height: "100%", borderRadius: 2, background: "#1D9E75", transition: "width 0.5s ease", width: `${progressPct}%` }} />
           </div>
