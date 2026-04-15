@@ -223,7 +223,7 @@ Everything you say should be grounded in this specific family going to this spec
       const dayStops = stops
         .filter((s) => s.day_id === day.id && s.stop_type !== "transit")
         .sort((a, b) => a.sort_order - b.sort_order)
-        .map((s, i) => `  ${i + 1}. [stop_id: ${s.id}] ${s.name} (${s.stop_type}, ${s.duration_minutes} min)`)
+        .map((s, i) => `  ${i + 1}. [stop_id: ${s.id}] ${s.name} (${s.stop_type}, ${s.duration_minutes} min)${s.is_anchor ? " ⚓ ANCHORED" : ""}`)
         .join("\n");
       return `Day ${day.day_number} (day_id: ${day.id})${day.title ? ` — ${day.title}` : ""}:\n${dayStops || "  (no stops yet)"}`;
     }).join("\n\n");
