@@ -23,8 +23,8 @@ No loading spinner screen. No pin drops. The map is purely atmospheric — a slo
 - `generatedDays` count (for progress bar) — updates per saved day
 
 **Progress overlay during Act 1:**
-- Top center: "Claude is building your trip" + "Day X of Y" + progress bar
-- Bottom right: Staggered status messages (personality-driven)
+- Centered text: **"I'm curating your trip"** with a spinning animation (subtle spinner or animated dots — something that feels alive, not a loading bar)
+- This is Claude speaking in first person. Keep it warm, not mechanical.
 
 **Exit condition:** `firstChunkDone === true` (generatedDays ≥ 2) AND at least 6 seconds elapsed since cinematic start.
 
@@ -44,7 +44,7 @@ These render from `trip` metadata but **only appear once the first day chunk is 
 
 **Data needed:** `trip.destination`, `trip.group_type`, `trip.group_detail`, `trip.interests`, `trip.travel_dates`, `trip.extra_notes`
 
-**Design:** Full-screen text over 2 cycling background images (see Background Images below). No buttons — arrow navigation only. Each slide has a unique accent color for its label.
+**Design:** Text card over 2 cycling background images (see Background Images below). No buttons — arrow navigation only. Each slide has a unique accent color for its label.
 
 **Accent colors:**
 - Destination: `#5DCAA5` (teal)
@@ -102,29 +102,43 @@ Cards (anchor spotlights, day overviews) must lock into position when their slid
 - New day slides appear at the END of the day section (after existing ones)
 - Slide counter shows "3/7+" when more data is expected
 - At the last slide, if `!generationComplete`, show a loading spinner instead of the right arrow
-- When all chunks have landed and the user reaches the final day slide, the tour ends — user exits to workspace
+
+#### Final Slide
+
+When all chunks have landed and the user reaches the final day slide, show an **"Explore my trip"** button. This is the exit point — clicking it takes the user to the workspace.
 
 ---
 
 ## Background Images
 
-Every slide (hype and day) displays **2 high-quality destination images** that slowly cycle behind the text content. This replaces the flat gradient backgrounds.
+Every slide (hype and day) displays **2 high-quality destination images** that slowly cycle in the background behind the text card. The images and the text are separate layers — **no overlay, no scrim on the images themselves.** The text lives in its own card; the images are purely atmospheric behind it.
 
-**Implementation approach:**
-- Source images via web search or a stock photo API based on `trip.destination` (and city name for day slides)
-- Each slide has 2 images loaded
-- Images display full-bleed behind a dark overlay/scrim so text remains readable
+### Image delivery — must be reliable
+
+Images cannot be fetched on-the-fly from external APIs during the slideshow. They need to be **packaged with the day chunks** during generation and stored so they deploy with high certainty.
+
+**Storage approach:**
+- During chunk generation (in `curate()`), fetch and store image URLs or image data alongside the day/stop data
+- Store image references in Supabase (either as URLs to a reliable CDN, or as stored objects in Supabase Storage)
+- TripTour reads image references from the same Supabase polling it already does for days/stops
+- Images must be pre-loaded before the slide transitions to them — no blank frames
+
+### Image sourcing — open discussion
+
+Need high-resolution destination photography that won't jam up the generation process. Options to evaluate:
+
+- **Unsplash API** — Free, high quality, reliable CDN. Rate limited but generous. Could fetch during generation and store URLs.
+- **Google Places Photos** — Tied to specific places (good for day slides), requires API key, has usage costs.
+- **Pexels API** — Similar to Unsplash, free tier available.
+- **Pre-curated library** — Build a destination image bank over time. Most reliable but most upfront work.
+
+**Key constraint:** Image fetching happens during generation, not during slideshow playback. Whatever source we choose, it runs in `curate()` alongside the AI calls and writes results to Supabase. The slideshow only reads what's already stored.
+
+### Display behavior:
+- Each slide has 2 images
+- Images display full-bleed behind the text card
 - Crossfade between the 2 images on a slow timer (~6-8 seconds per image)
-- Images should be high resolution, destination-specific, and atmospheric — the kind of travel photography that sets a mood
-
-**Scrim:** Dark gradient overlay on top of images to ensure white text is legible. Something like `linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.7))`.
-
-**Fallback:** If images can't be loaded, fall back to the existing gradient backgrounds.
-
-**Open questions:**
-- Image source: Unsplash API? Google Places photos? Pre-fetched during generation?
-- Should images be destination-level (same 2 images for all hype slides) or per-slide (different images for food vs. gems)?
-- Caching strategy for images so they don't re-fetch on every slide transition
+- Fallback: if images aren't available for a slide, use the existing gradient backgrounds
 
 ---
 
@@ -135,28 +149,28 @@ Every slide (hype and day) displays **2 high-quality destination images** that s
   → [City Arrival]* → [Anchor Spotlight]* → [Day 1] → [Day 2]
   → [City Arrival]* → [Anchor Spotlight]* → [Day 3] → [Day 4]
   → ... (slides grow as chunks land)
-  → [Final Day] → EXIT TO WORKSPACE
+  → [Final Day + "Explore my trip" button] → EXIT TO WORKSPACE
 
 *  = conditional (multi-city only for arrivals, best anchor per city)
 ```
 
-No wrap-up slides. The tour ends after the last day slide. User exits to workspace.
+No wrap-up slides. The tour ends with the "Explore my trip" button on the final slide.
 
 ---
 
 ## State Machine — Phase Transitions
 
 ```
-CINEMATIC ──(firstChunkDone + 6s min)──→ TOUR ──(last slide or escape)──→ WORKSPACE
-     │                                                                        ↑
-     └──(generationDone + stuck in cinematic)─────────────────────────────────┘
+CINEMATIC ──(firstChunkDone + 6s min)──→ TOUR ──("Explore my trip" or escape)──→ WORKSPACE
+     │                                                                               ↑
+     └──(generationDone + stuck in cinematic)────────────────────────────────────────┘
 ```
 
 ### States
 
 | State | Component | What's Visible |
 |-------|-----------|----------------|
-| `cinematic` | CuratingPage + MapCinematic | Dark map with zoom, progress overlay |
+| `cinematic` | CuratingPage + MapCinematic | Dark map with zoom, "I'm curating your trip" overlay |
 | `tour` | TripTour | Full-screen slideshow with background images |
 | `workspace` | TripPage | Three-panel layout (stops, chat, map) |
 
@@ -168,7 +182,7 @@ CINEMATIC ──(firstChunkDone + 6s min)──→ TOUR ──(last slide or esc
 - **KEY DESIGN:** `firstChunkDone` only transitions `false → true` once. The effect depends on `[phase, firstChunkDone]`. Timer is set exactly once and never canceled by subsequent `generatedDays` increments.
 
 ### Transition: tour → workspace
-- **Trigger:** User reaches and advances past final slide, OR presses Escape at any point
+- **Trigger:** User clicks "Explore my trip" on the final slide, OR presses Escape at any point
 - **Action:** `sessionStorage.setItem(tour_seen_{tripId})`, `router.push(/trip/{tripId})`
 
 ### Safety net: cinematic → tour (edge case)
@@ -193,14 +207,16 @@ curate() starts
   │     ├── For each day in response:
   │     │     ├── INSERT into `days` table
   │     │     ├── INSERT stops into `stops` table
+  │     │     ├── Fetch + store 2 background images for the day (see Background Images)
   │     │     └── setGeneratedDays(++saved) ← triggers firstChunkDone when ≥ 2
   │     └── Retry once on failure
+  ├── Fetch + store background images for hype slides (destination-level)
   ├── Generate trip summary (separate API call)
   │     └── UPDATE trip.trip_summary
   └── setGenerationDone(true)
 ```
 
-**Chunk definition:** 1 chunk = 1 API call = 2 days of stops. A 7-day trip has 4 chunks (2+2+2+1).
+**Chunk definition:** 1 chunk = 1 API call = 2 days of stops + their background images. A 7-day trip has 4 chunks (2+2+2+1).
 
 ### What TripTour reads (Supabase polling)
 
@@ -208,10 +224,11 @@ curate() starts
 Every 4 seconds (while !generationComplete):
   ├── SELECT * FROM days WHERE trip_id = X ORDER BY day_number
   ├── SELECT * FROM stops WHERE trip_id = X AND version_owner IS NULL ORDER BY sort_order
-  └── Rebuild slides from days + stops + trip metadata
+  ├── Read image references for available days
+  └── Rebuild slides from days + stops + images + trip metadata
 
 On generationComplete:
-  ├── One final fetch of days + stops
+  ├── One final fetch of days + stops + images
   └── Fetch updated trip (for trip_summary — available but not displayed in tour)
 ```
 
@@ -241,19 +258,25 @@ On generationComplete:
 
 **Problem:** Progress overlay says "Your Co-Pilot is building your trip."
 
-**Fix:** Replace with "Claude is building your trip."
+**Fix:** Replace with "I'm curating your trip" + spinning animation.
 
 ### 5. Background images not yet implemented (NEW FEATURE)
 
-**Problem:** Slides currently use flat gradient backgrounds. They need 2 high-quality destination photos cycling behind the text.
+**Problem:** Slides currently use flat gradient backgrounds. They need 2 high-quality destination photos cycling behind the text card.
 
-**Fix:** See Background Images section above. Requires image sourcing strategy, crossfade animation, and dark scrim for text legibility.
+**Fix:** See Background Images section. Images must be fetched during generation, stored in Supabase, and read by TripTour during polling. No on-the-fly external API calls during slideshow.
 
 ### 6. Loading spinner screen before cinematic
 
 **Problem:** There's a 2-second loading spinner before the map appears. Unnecessary dead time.
 
 **Fix:** Remove the loading phase. Go straight to cinematic on mount. Map handles its own loading state (hidden until `idle` event).
+
+### 7. Final slide needs exit button
+
+**Problem:** No clear exit point from the tour when all slides have been viewed.
+
+**Fix:** Add "Explore my trip" button on the final day slide. Button triggers `onComplete` → workspace.
 
 ---
 
@@ -274,8 +297,8 @@ On generationComplete:
 1. **Fix card positioning** — Deterministic positions, opacity-only transitions, stable across rebuilds.
 2. **Shorten hype headlines** — 5 words max, move voice into body text.
 3. **Remove loading spinner phase** — Cinematic starts immediately on mount.
-4. **Remove Act 4 wrap-up slides** — Tour ends after the last day slide.
+4. **Remove wrap-up slides** — Tour ends after the last day slide with "Explore my trip" button.
 5. **Remove map pin drops** — Cinematic is map + zoom only, no pins.
 6. **Revise map zoom** — Zoom in tighter on destination, not fitBounds to pins.
-7. **Replace "Co-Pilot" with "Claude"** everywhere.
-8. **Background images** — Source strategy, crossfade implementation, dark scrim. This is the biggest new feature and may warrant its own design pass.
+7. **Replace cinematic overlay** — "I'm curating your trip" with spinning animation.
+8. **Background images** — Decide on image source, build fetch-during-generation pipeline, Supabase storage, crossfade display. Biggest new feature — needs its own design pass.
