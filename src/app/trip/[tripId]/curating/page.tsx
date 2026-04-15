@@ -249,12 +249,13 @@ export default function CuratingPage() {
         console.error("Trip summary generation failed:", err);
       }
 
-      // Mark generation complete — cinematic→tour effect will handle transition
+      // Mark generation complete
       setGenerationDone(true);
-      // If still on loading phase (cinematic never showed), go straight to workspace
+      // Only redirect if we never made it past loading (edge case)
       if (phaseRef.current === "loading") {
         router.push(`/trip/${tripId}`);
       }
+      // Otherwise: user is in tour slideshow or already navigated to workspace
     }
 
     curate();
