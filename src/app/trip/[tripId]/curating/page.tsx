@@ -310,17 +310,6 @@ export default function CuratingPage() {
       setPhase("tour");
     }
   }, [generationDone, phase]);
-  const progressSteps = [
-    `Walking the streets of ${dest} in my head`,
-    "Checking what's actually worth the hype",
-    ...((trip?.extra_notes || "").toLowerCase().match(/food|restaurant|eat|cuisine/) ? ["Calling in some food recommendations"] : []),
-    ...((trip?.interests || "").toLowerCase().match(/history|museum|heritage/) ? ["Digging up the history worth knowing"] : []),
-    ...(trip?.group_type === "Family" ? ["Making sure every stop works for the kids"] : []),
-    ...((trip?.extra_notes || "").toLowerCase().match(/dog|pet/) ? ["Sniffing out the dog-friendly spots"] : []),
-    "Putting the days in the right order",
-    "Almost ready — just tightening a few things",
-  ];
-
   if (error) return (
     <div className="h-screen flex items-center justify-center bg-white">
       <p className="text-red-500 text-center max-w-sm px-4">{error}</p>
