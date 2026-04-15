@@ -249,9 +249,10 @@ export default function CuratingPage() {
         console.error("Trip summary generation failed:", err);
       }
 
-      // Mark generation complete — tour phase handles redirect
+      // Mark generation complete — cinematic→tour effect will handle transition
       setGenerationDone(true);
-      if (phase !== "tour") {
+      // If still on loading phase (cinematic never showed), go straight to workspace
+      if (phaseRef.current === "loading") {
         router.push(`/trip/${tripId}`);
       }
     }
