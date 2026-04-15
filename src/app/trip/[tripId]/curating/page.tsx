@@ -286,6 +286,9 @@ export default function CuratingPage() {
         console.error("Trip summary generation failed:", err);
       }
 
+      // Ensure hype images are stored before generation completes
+      await hypeImagePromise;
+
       // Mark generation complete
       setGenerationDone(true);
     }
