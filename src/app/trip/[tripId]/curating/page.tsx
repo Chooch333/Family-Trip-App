@@ -256,6 +256,64 @@ export default function CuratingPage() {
   }, [tripId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dest = trip?.destination || "your destination";
+
+  // Phase transitions
+  // Loading → cinematic after brief delay
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (phase === "loading") setPhase("cinematic");
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [phase]);
+
+  // Cinematic → tour at 75% threshold
+  useEffect(() => {
+    if (phase !== "cinematic" || totalDays === 0) return;
+    const threshold = Math.ceil(totalDays * 0.75);
+    if (generatedDays >= threshold) {
+      // Load current data from Supabase for the tour
+      (async () => {
+        const [tripRes, daysRes, stopsRes] = await Promise.all([
+          supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
+          supabase.from("days").select("*").eq("trip_id", tripId).order("day_number"),
+          supabase.from("stops").select("*").eq("trip_id", tripId).is("version_owner", null).order("sort_order"),
+        ]);
+        if (tripRes.data && daysRes.data && stopsRes.data) {
+          const loadedDays = daysRes.data as Day[];
+          setTourData({
+            trip: tripRes.data as Trip,
+            days: loadedDays,
+            stops: stopsRes.data as Stop[],
+            dayColors: generateDayColors(loadedDays.length),
+          });
+          setPhase("tour");
+        }
+      })();
+    }
+  }, [phase, generatedDays, totalDays, tripId]);
+
+  // Handle tour completion
+  function handleTourComplete() {
+    // Set sessionStorage flag so workspace doesn't show tour again
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(`tour_seen_${tripId}`, "1");
+    }
+    if (generationDone) {
+      router.push(`/trip/${tripId}`);
+    } else {
+      // Generation still running — show brief finishing state then redirect
+      setPhase("loading");
+    }
+  }
+
+  // When generation finishes and we're in loading (post-tour waiting), redirect
+  useEffect(() => {
+    if (generationDone && phase === "loading" && tourData) {
+      // Small delay so the user sees "finishing" message
+      const timer = setTimeout(() => router.push(`/trip/${tripId}`), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [generationDone, phase, tourData, tripId, router]);
   const progressSteps = [
     `Walking the streets of ${dest} in my head`,
     "Checking what's actually worth the hype",
