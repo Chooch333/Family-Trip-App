@@ -110,9 +110,9 @@ export default function MapCinematic({ tripId, refreshTrigger }: MapCinematicPro
 
   // Render pins on the map
   useEffect(() => {
-    if (!mapReady || !leafletMap.current || pins.length === 0) return;
+    if (!mapReady || !leafletMap.current || !leafletLib.current || pins.length === 0) return;
 
-    const L = require("leaflet");
+    const L = leafletLib.current;
     const map = leafletMap.current;
 
     // Add new markers with animation
