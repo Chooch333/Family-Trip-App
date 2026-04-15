@@ -267,6 +267,7 @@ export default function CuratingPage() {
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
   const cinematicStartRef = useRef<number>(0);
+  const tourLaunched = useRef(false);
 
   // Loading → cinematic after brief delay
   useEffect(() => {
@@ -279,24 +280,28 @@ export default function CuratingPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Cinematic → tour when generation is done + minimum display time elapsed
-  // Minimum 10s on cinematic: map reveal (~2s) + pins (~2s) + zoom (3.5s) + pause (2.5s)
+  // Cinematic → tour when first chunk is done + minimum display time elapsed
+  // Minimum 6s on cinematic: map reveal (~2s) + zoom (3.5s) + brief pause
   useEffect(() => {
-    if (phase !== "cinematic" || !generationDone) return;
+    if (phase !== "cinematic" || tourLaunched.current) return;
+    // Launch tour after first chunk (2 days) lands
+    if (generatedDays < 2) return;
 
     const elapsed = Date.now() - cinematicStartRef.current;
-    const minDuration = 10000;
+    const minDuration = 6000;
     const remaining = Math.max(0, minDuration - elapsed);
 
     const timer = setTimeout(() => {
-      // Load final data from Supabase for the tour
+      if (tourLaunched.current) return;
+      tourLaunched.current = true;
+      // Load whatever data exists so far from Supabase
       (async () => {
         const [tripRes, daysRes, stopsRes] = await Promise.all([
           supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
           supabase.from("days").select("*").eq("trip_id", tripId).order("day_number"),
           supabase.from("stops").select("*").eq("trip_id", tripId).is("version_owner", null).order("sort_order"),
         ]);
-        if (tripRes.data && daysRes.data && stopsRes.data) {
+        if (tripRes.data && daysRes.data && daysRes.data.length > 0 && stopsRes.data) {
           const loadedDays = daysRes.data as Day[];
           setTourData({
             trip: tripRes.data as Trip,
@@ -312,7 +317,7 @@ export default function CuratingPage() {
     }, remaining);
 
     return () => clearTimeout(timer);
-  }, [phase, generationDone, tripId]);
+  }, [phase, generatedDays, tripId]);
 
   // Handle tour completion — always redirect, never go back
   function handleTourComplete() {
