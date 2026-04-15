@@ -96,6 +96,16 @@ interface DayData {
 
 export default function CuratingPage() {
   const router = useRouter();
+
+  // ── Fetch 2 Unsplash images for a slide ──
+  async function fetchSlideImages(query: string): Promise<string[]> {
+    try {
+      const res = await fetch(`/api/unsplash/search?${new URLSearchParams({ query, count: "2" })}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.images || []).map((img: any) => img.url).filter(Boolean);
+    } catch { return []; }
+  }
   const params = useParams();
   const tripId = params.tripId as string;
   const [trip, setTrip] = useState<Trip | null>(null);
