@@ -214,7 +214,7 @@ function buildGemsHype(trip: Trip): string {
 // BACKGROUND IMAGE CROSSFADE
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SlideBackground({ images, fallbackGradient, active }: { images?: string[]; fallbackGradient: string; active: boolean }) {
+function SlideBackground({ images, active }: { images?: string[]; active: boolean }) {
   const [imgIdx, setImgIdx] = useState(0);
   useEffect(() => {
     if (!active || !images || images.length < 2) return;
@@ -222,9 +222,7 @@ function SlideBackground({ images, fallbackGradient, active }: { images?: string
     return () => clearInterval(timer);
   }, [active, images]);
   useEffect(() => { if (active) setImgIdx(0); }, [active]);
-  if (!images || images.length === 0) {
-    return <div style={{ position: "absolute", inset: 0, background: fallbackGradient }} />;
-  }
+  if (!images || images.length === 0) return null;
   return (
     <div style={{ position: "absolute", inset: 0 }}>
       {images.map((url, i) => (
