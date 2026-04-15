@@ -136,7 +136,7 @@ export default function CuratingPage() {
       const group = buildGroupDescription(t);
       const dest = t.destination || t.name;
 
-      const chunkSize = 3;
+      const chunkSize = 2;
       const chunks = Math.ceil(total / chunkSize);
       const dayColors = generateDayColors(total);
       const summaries: GeneratedDaySummary[] = [];
