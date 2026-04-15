@@ -336,7 +336,7 @@ function buildSlides(
         cardLabel: label, cardLabelColor: dayColor,
         dayTitle: day.title || `Day ${day.day_number}`, dayColor, body,
         stops: displayStops.map(s => ({ name: s.name, meta: `${s.stop_type} · ${s.duration_minutes} min`, time: formatTime12(s.start_time), isAnchor: !!s.is_anchor, color: dayColor })),
-        images: dayImages.length >= 2 ? dayImages.slice(0, 2) : undefined,
+        images: dayImages.length >= 2 ? dayImages.slice(0, 2) : tripImages.length >= 2 ? tripImages.slice(0, 2) : undefined,
       });
     }
   }
