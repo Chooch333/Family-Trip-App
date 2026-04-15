@@ -270,15 +270,9 @@ export default function CuratingPage() {
   const cinematicStartRef = useRef<number>(0);
   const tourLaunched = useRef(false);
 
-  // Loading → cinematic after brief delay
+  // Set cinematic start time on mount
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (phaseRef.current === "loading") {
-        cinematicStartRef.current = Date.now();
-        setPhase("cinematic");
-      }
-    }, 2000);
-    return () => clearTimeout(timer);
+    cinematicStartRef.current = Date.now();
   }, []);
 
   // Track when first chunk of days is ready (one-shot: false → true)
