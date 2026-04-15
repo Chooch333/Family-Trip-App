@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { askClaude, executeToolCall, getPromptChips } from "@/lib/claude";
 import { geocodeAndUpdateStop } from "@/lib/geocode";
 import TripLayout from "@/components/TripLayout";
+import TripTour from "@/components/TripTour";
 import AnchorIcon from "@/components/AnchorIcon";
 import ReactMarkdown from "react-markdown";
 import type { Trip, TripMember, Day, Stop, Vote, Proposal, Profile } from "@/lib/database.types";
