@@ -24,6 +24,8 @@ export default function MapCinematic({ tripId, refreshTrigger }: MapCinematicPro
   const [mapReady, setMapReady] = useState(false);
   const prevPinIds = useRef<Set<string>>(new Set());
 
+  const leafletLib = useRef<any>(null);
+
   // Initialize Leaflet map
   useEffect(() => {
     if (!mapRef.current || leafletMap.current) return;
@@ -32,6 +34,7 @@ export default function MapCinematic({ tripId, refreshTrigger }: MapCinematicPro
 
     async function initMap() {
       const L = (await import("leaflet")).default;
+      leafletLib.current = L;
 
       if (cancelled || !mapRef.current) return;
 
