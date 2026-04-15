@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
+import "maplibre-gl/dist/maplibre-gl.css";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MapCinematic — MapLibre GL JS (vector tiles, WebGL)
