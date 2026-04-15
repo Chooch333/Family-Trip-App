@@ -46,10 +46,11 @@ type FocusedPanel = "stops" | "chat" | "map";
 
 function getPanelStyles(focused: FocusedPanel, chatCollapsed: boolean) {
   if (chatCollapsed) {
+    // Chat stays in place but drops behind; stops and map expand to 50/50 in front
     return {
-      stops: { width: "calc(50% - 18px)", left: 12, right: "auto", zIndex: focused === "stops" ? 3 : 2 },
-      chat:  { width: 0, left: "50%", right: "auto", zIndex: 0 },
-      map:   { width: "calc(50% - 18px)", left: "auto", right: 12, zIndex: focused === "map" ? 3 : 2 },
+      stops: { width: "calc(50% - 6px)", left: 12, right: "auto", zIndex: focused === "stops" ? 4 : 3 },
+      chat:  { width: "36%", left: "calc(33% - 18px)", right: "auto", zIndex: 0 },
+      map:   { width: "calc(50% - 6px)", left: "auto", right: 12, zIndex: focused === "map" ? 4 : 3 },
     };
   }
   if (focused === "stops") {
@@ -358,11 +359,11 @@ export default function TripLayout({
               width: panelStyles.chat.width,
               zIndex: panelStyles.chat.zIndex,
               transition: PANEL_TRANSITION,
-              borderRadius: chatCollapsed ? 0 : 10,
-              border: chatCollapsed ? "none" : `0.5px solid ${focusedPanel === "chat" ? BORDER_ACTIVE : BORDER}`,
+              borderRadius: 10,
+              border: `0.5px solid ${!chatCollapsed && focusedPanel === "chat" ? BORDER_ACTIVE : BORDER}`,
               backgroundColor: "white",
-              boxShadow: chatCollapsed ? "none" : (focusedPanel === "chat" ? SHADOW_ACTIVE : "none"),
-              opacity: chatCollapsed ? 0 : (focusedPanel === "chat" ? 1 : 0.97),
+              boxShadow: !chatCollapsed && focusedPanel === "chat" ? SHADOW_ACTIVE : "none",
+              opacity: chatCollapsed ? 1 : (focusedPanel === "chat" ? 1 : 0.97),
               overflow: "hidden",
               pointerEvents: chatCollapsed ? "none" : "auto",
             }}
@@ -370,12 +371,14 @@ export default function TripLayout({
             {!chatCollapsed && (
               <button
                 onClick={(e) => { e.stopPropagation(); setChatCollapsed(true); }}
-                aria-label="Collapse chat"
+                aria-label="Send chat to back"
+                title="Send chat to back"
                 className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
                 style={{ zIndex: 5 }}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M3 6l5 5 5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                  <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.4" fill="white" />
+                  <rect x="2.5" y="2.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.4" fill="white" />
                 </svg>
               </button>
             )}
