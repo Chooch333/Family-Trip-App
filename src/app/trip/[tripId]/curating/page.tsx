@@ -355,14 +355,13 @@ export default function CuratingPage() {
   const progressPct = totalDays > 0 ? Math.min(100, (generatedDays / totalDays) * 100) : 0;
 
   // ── PHASE: TOUR ──
-  if (phase === "tour" && tourData) {
+  if (phase === "tour" && trip) {
     return (
       <TripTour
-        trip={tourData.trip}
-        days={tourData.days}
-        stops={tourData.stops}
-        dayColors={tourData.dayColors}
+        tripId={tripId}
+        trip={trip}
         onComplete={handleTourComplete}
+        generationComplete={generationDone}
       />
     );
   }
