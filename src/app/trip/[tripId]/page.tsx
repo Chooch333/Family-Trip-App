@@ -736,9 +736,9 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
         await supabase.from("trips").update({ trip_summary: result.text }).eq("id", tripId);
         setTrip(prev => prev ? { ...prev, trip_summary: result.text } as Trip : prev);
         // Show splash if not already seen
-        if (typeof window !== "undefined" && !sessionStorage.getItem(`splash_seen_${tripId}`)) {
-          setShowTripSplash(true);
-          sessionStorage.setItem(`splash_seen_${tripId}`, "1");
+        if (typeof window !== "undefined" && !sessionStorage.getItem(`tour_seen_${tripId}`)) {
+          setShowTripTour(true);
+          sessionStorage.setItem(`tour_seen_${tripId}`, "1");
         }
       }
     })();
