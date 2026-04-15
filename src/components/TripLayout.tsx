@@ -44,7 +44,14 @@ const PANEL_TRANSITION = "all 0.35s cubic-bezier(0.4, 0, 0.2, 1)";
 
 type FocusedPanel = "stops" | "chat" | "map";
 
-function getPanelStyles(focused: FocusedPanel) {
+function getPanelStyles(focused: FocusedPanel, chatCollapsed: boolean) {
+  if (chatCollapsed) {
+    return {
+      stops: { width: "calc(50% - 18px)", left: 12, right: "auto", zIndex: focused === "stops" ? 3 : 2 },
+      chat:  { width: 0, left: "50%", right: "auto", zIndex: 0 },
+      map:   { width: "calc(50% - 18px)", left: "auto", right: 12, zIndex: focused === "map" ? 3 : 2 },
+    };
+  }
   if (focused === "stops") {
     return {
       stops: { width: "45%", left: 12, right: "auto", zIndex: 3 },
@@ -85,6 +92,7 @@ export default function TripLayout({
 }: TripLayoutProps) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chatCollapsed, setChatCollapsed] = useState(false);
   const [avatarPopover, setAvatarPopover] = useState(false);
   const [switchUserMode, setSwitchUserMode] = useState(false);
   const [switchEmail, setSwitchEmail] = useState("");
@@ -135,7 +143,7 @@ export default function TripLayout({
 
   const activeDayColor = dayColors[activeDay] || "#1D9E75";
   const railTrips = (trips || []).slice(0, 4);
-  const panelStyles = getPanelStyles(focusedPanel);
+  const panelStyles = getPanelStyles(focusedPanel, chatCollapsed);
 
   function tripInitial(name: string): string {
     const trimmed = name.trim();
@@ -145,13 +153,15 @@ export default function TripLayout({
 
   return (
     <div className="h-screen flex flex-row overflow-hidden relative" style={{ backgroundColor: "#f0f0ec" }}>
-      {/* Sidebar collapsed rail — full height, always visible */}
+      {/* Sidebar collapsed rail — full height, always visible, stays above sidebar */}
       <div
         className="flex-shrink-0 flex flex-col items-center py-2 gap-2"
         style={{
           width: 48,
           backgroundColor: RAIL_BG,
           borderRight: `0.5px solid ${BORDER}`,
+          position: "relative",
+          zIndex: 20,
         }}
       >
           <button
@@ -338,7 +348,7 @@ export default function TripLayout({
 
           {/* Center — chat */}
           <div
-            onClick={() => setFocusedPanel("chat")}
+            onClick={() => !chatCollapsed && setFocusedPanel("chat")}
             className="absolute flex flex-col min-h-0"
             style={{
               top: 12,
@@ -348,14 +358,27 @@ export default function TripLayout({
               width: panelStyles.chat.width,
               zIndex: panelStyles.chat.zIndex,
               transition: PANEL_TRANSITION,
-              borderRadius: 10,
-              border: `0.5px solid ${focusedPanel === "chat" ? BORDER_ACTIVE : BORDER}`,
+              borderRadius: chatCollapsed ? 0 : 10,
+              border: chatCollapsed ? "none" : `0.5px solid ${focusedPanel === "chat" ? BORDER_ACTIVE : BORDER}`,
               backgroundColor: "white",
-              boxShadow: focusedPanel === "chat" ? SHADOW_ACTIVE : "none",
-              opacity: focusedPanel === "chat" ? 1 : 0.97,
+              boxShadow: chatCollapsed ? "none" : (focusedPanel === "chat" ? SHADOW_ACTIVE : "none"),
+              opacity: chatCollapsed ? 0 : (focusedPanel === "chat" ? 1 : 0.97),
               overflow: "hidden",
+              pointerEvents: chatCollapsed ? "none" : "auto",
             }}
           >
+            {!chatCollapsed && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setChatCollapsed(true); }}
+                aria-label="Collapse chat"
+                className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
+                style={{ zIndex: 5 }}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M3 6l5 5 5-5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            )}
             {renderChatOverlay && renderChatOverlay()}
             {renderChat()}
           </div>
@@ -383,28 +406,56 @@ export default function TripLayout({
             {renderRightPanel()}
           </div>
 
-          {/* Sidebar overlay backdrop */}
-          {sidebarOpen && (
-            <div
-              className="absolute inset-0"
-              style={{ zIndex: 19, backgroundColor: "rgba(0,0,0,0.08)" }}
-              onClick={() => setSidebarOpen(false)}
-            />
+          {/* Floating chat restore button */}
+          {chatCollapsed && (
+            <button
+              onClick={() => setChatCollapsed(false)}
+              aria-label="Restore chat"
+              className="absolute flex items-center justify-center text-white hover:scale-105 transition-transform"
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: "50%",
+                backgroundColor: "#534AB7",
+                bottom: 20,
+                left: "50%",
+                transform: "translateX(-50%)",
+                zIndex: 18,
+                boxShadow: "0 4px 12px rgba(83,74,183,0.4)",
+              }}
+            >
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                <path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v7a2 2 0 01-2 2H8l-4 3v-3H5a2 2 0 01-2-2V5z" fill="white" />
+              </svg>
+            </button>
           )}
+        </div>
+      </div>
 
-          {/* Sidebar overlay panel — slides over rail + left panel */}
-          <aside
-            className="absolute top-0 left-0 bottom-0 bg-white flex flex-col"
-            style={{
-              width: 220,
-              zIndex: 20,
-              borderRight: `0.5px solid ${BORDER}`,
-              transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
-              transition: "transform 0.2s ease",
-              boxShadow: sidebarOpen ? "2px 0 16px rgba(0,0,0,0.08)" : undefined,
-              pointerEvents: sidebarOpen ? "auto" : "none",
-            }}
-          >
+      {/* Sidebar backdrop — starts after rail so rail stays clickable */}
+      {sidebarOpen && (
+        <div
+          className="absolute top-0 bottom-0"
+          style={{ left: 48, right: 0, zIndex: 14, backgroundColor: "rgba(0,0,0,0.08)" }}
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar panel — slides from behind the rail */}
+      <aside
+        className="absolute top-0 bottom-0 bg-white flex flex-col"
+        style={{
+          left: 0,
+          width: 48 + 220,
+          paddingLeft: 48,
+          zIndex: 15,
+          borderRight: `0.5px solid ${BORDER}`,
+          transform: sidebarOpen ? "translateX(0)" : "translateX(-100%)",
+          transition: "transform 0.2s ease",
+          boxShadow: sidebarOpen ? "2px 0 16px rgba(0,0,0,0.08)" : undefined,
+          pointerEvents: sidebarOpen ? "auto" : "none",
+        }}
+      >
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 flex-shrink-0">
               <span className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Your trips</span>
               <button
@@ -469,8 +520,6 @@ export default function TripLayout({
               </button>
             )}
           </aside>
-        </div>
-      </div>
     </div>
   );
 }

@@ -28,25 +28,19 @@ function buildGroupDescription(trip: Trip): string {
   return detail || "travelers";
 }
 
-function buildCurationPrompt(trip: Trip): { userPrompt: string; systemPrompt: string } {
+function buildBaseSystemPrompt(trip: Trip, totalDays: number): string {
   const dest = trip.destination || trip.name;
   const group = buildGroupDescription(trip);
-  const durDays = trip.duration === "Weekend" ? "3" : trip.duration === "Short trip" ? "5" : trip.duration === "Full week" ? "7" : trip.duration === "Extended" ? "10" : trip.duration || "7";
+  return `You are this trip's Co-Pilot — the friend who's already been to ${dest} and has strong opinions about all of it. You've walked these streets, eaten at these restaurants, and you know which "must-see" spots are actually worth the line and which ones you'd skip for something better around the corner.
 
-  const userPrompt = `Build me a ${trip.duration || durDays + " day"} trip to ${dest} for ${group}.${trip.travel_dates ? ` We're going ${trip.travel_dates}.` : ""}${trip.interests ? ` We're into ${trip.interests}.` : ""}${trip.extra_notes ? ` Also: ${trip.extra_notes}.` : ""} Make it incredible.`;
-
-  const systemPrompt = `You are this trip's Co-Pilot — the friend who's already been to ${dest} and has strong opinions about all of it. You've walked these streets, eaten at these restaurants, and you know which "must-see" spots are actually worth the line and which ones you'd skip for something better around the corner.
-
-You're building a trip for ${group}. You know who they are. Every choice you make should feel like it was made for THEM specifically — not a generic "top 10" list. When you describe a stop, write like you're standing outside it with the family, pointing at the door, telling them why you brought them here.
+You're building a ${totalDays}-day trip for ${group}. You know who they are. Every choice you make should feel like it was made for THEM specifically — not a generic "top 10" list. When you describe a stop, write like you're standing outside it with the family, pointing at the door, telling them why you brought them here.
 
 You MUST respond with a JSON code block wrapped in \`\`\`json and \`\`\` markers.
 
 JSON format:
-{"trip_summary":"...","days":[{"day_number":1,"title":"City/area","narrative":"...","reasoning":"...","stops":[{"name":"Place","description":"...","ai_note":"...","stop_type":"visit","latitude":0.0,"longitude":0.0,"start_time":"9:00 AM","duration_minutes":90,"cost_estimate":0}]}]}
+{"days":[{"day_number":1,"title":"City/area","narrative":"...","reasoning":"...","stops":[{"name":"Place","description":"...","ai_note":"...","stop_type":"visit","latitude":0.0,"longitude":0.0,"start_time":"9:00 AM","duration_minutes":90,"cost_estimate":0}]}]}
 
 FIELD VOICE GUIDE:
-
-trip_summary: Your opening pitch to the family. 3-4 sentences that make them feel the trip before they see the details. Not a table of contents — an emotional preview. "You're going to fall in love with this country. The first few days are about getting your bearings in Rome — ancient stuff in the morning while the kids have energy, long lunches in piazzas, gelato on every corner. Then we head north to Tuscany where things slow way down."
 
 narrative (per day): How you'd brief the family at breakfast. Set the energy, the theme, what makes today different from yesterday. "Okay, today's the big one — Colosseum, Forum, the whole ancient Rome experience. We're hitting it early before the crowds and the heat. Afternoon is deliberately chill because everyone's going to need it."
 
@@ -57,7 +51,7 @@ description (per stop): Why THIS stop for THIS family. Not what it is — why it
 ai_note (per stop): Your most personal take. Why you picked THIS over the alternatives. "I chose this over the more famous place down the street because there's no line, it's half the price, and honestly the view is better." This should feel like a whispered aside, not a data point.
 
 STRUCTURAL RULES:
-- ${durDays} days, 4-7 stops per day
+- 4-7 stops per day
 - Real latitude/longitude for every non-transit stop
 - stop_type: visit, food, transit, walk_by, guided_tour
 - Transit stops for inter-city travel (no coordinates needed)
@@ -65,10 +59,33 @@ STRUCTURAL RULES:
 - Include food stops for meals — and have opinions about them
 - Every stop needs a description AND an ai_note
 - Every day needs a narrative AND a reasoning field
-- Include a trip_summary at the top level
 ${trip.travel_dates ? `- Travel dates: ${trip.travel_dates}. Factor in weather, seasonal closures, holidays, local events, and what the destination actually feels like at that time of year.` : ""}`;
+}
 
-  return { userPrompt, systemPrompt };
+interface GeneratedDaySummary {
+  day_number: number;
+  title: string;
+  stops: string[];
+}
+
+interface StopData {
+  name: string;
+  description?: string;
+  ai_note?: string;
+  latitude?: number;
+  longitude?: number;
+  start_time?: string;
+  duration_minutes?: number;
+  cost_estimate?: number;
+  stop_type?: string;
+}
+
+interface DayData {
+  day_number: number;
+  title: string;
+  narrative?: string;
+  reasoning?: string;
+  stops?: StopData[];
 }
 
 export default function CuratingPage() {
@@ -76,8 +93,10 @@ export default function CuratingPage() {
   const params = useParams();
   const tripId = params.tripId as string;
   const [trip, setTrip] = useState<Trip | null>(null);
-  const [member, setMember] = useState<TripMember | null>(null);
+  const [, setMember] = useState<TripMember | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [totalDays, setTotalDays] = useState(0);
+  const [generatedDays, setGeneratedDays] = useState(0);
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -100,45 +119,61 @@ export default function CuratingPage() {
         return;
       }
 
-      const { userPrompt, systemPrompt } = buildCurationPrompt(t);
+      const durDaysStr = t.duration === "Weekend" ? "3" : t.duration === "Short trip" ? "5" : t.duration === "Full week" ? "7" : t.duration === "Extended" ? "10" : t.duration || "7";
+      const total = parseInt(durDaysStr) || 7;
+      setTotalDays(total);
 
-      try {
-        const res = await fetch("/api/ai/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [{ role: "user", content: userPrompt }], systemPrompt, max_tokens: 16384 }),
-        });
-        const data = await res.json();
-        const contentBlocks: Array<{ type: string; text?: string }> = Array.isArray(data.content) ? data.content : [];
-        const fullContent = contentBlocks.filter(b => b.type === "text").map(b => b.text || "").join("\n") || (typeof data.content === "string" ? data.content : "");
-        const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)```/);
+      const baseSystemPrompt = buildBaseSystemPrompt(t, total);
+      const group = buildGroupDescription(t);
+      const dest = t.destination || t.name;
 
-        if (jsonMatch) {
-          const itinerary = JSON.parse(jsonMatch[1]);
+      const chunkSize = 3;
+      const chunks = Math.ceil(total / chunkSize);
+      const dayColors = generateDayColors(total);
+      const summaries: GeneratedDaySummary[] = [];
+      let saved = 0;
 
-          if (itinerary.trip_summary) {
-            await supabase.from("trips").update({ trip_summary: itinerary.trip_summary }).eq("id", tripId);
-          }
+      async function generateChunk(startDay: number, endDay: number, attempt = 0): Promise<boolean> {
+        const prevContext = summaries.length > 0
+          ? `\n\nDays already planned:\n${summaries.map(s => `Day ${s.day_number} — ${s.title}: ${s.stops.join(", ")}`).join("\n")}\n\nNow generate days ${startDay} through ${endDay}. Maintain geographic flow and avoid repeating locations from previous days. Same JSON format.`
+          : `\n\nGenerate days ${startDay} through ${endDay} of ${total}.`;
+        const systemPrompt = baseSystemPrompt + prevContext;
+        const userPrompt = `Generate days ${startDay} through ${endDay} of my ${total}-day trip to ${dest}.`;
 
-          if (itinerary.days && Array.isArray(itinerary.days)) {
-            const dayColors = generateDayColors(itinerary.days.length);
-            for (let i = 0; i < itinerary.days.length; i++) {
-              const dayData = itinerary.days[i];
-              const color = dayColors[i % dayColors.length];
-              const { data: dayRow } = await supabase.from("days").insert({
-                trip_id: tripId,
-                day_number: dayData.day_number,
-                title: dayData.title,
-                color,
-                narrative: dayData.narrative || null,
-                reasoning: dayData.reasoning || null,
-                vibe_status: "locked",
-              }).select().single();
-              if (!dayRow) continue;
-              for (let j = 0; j < (dayData.stops || []).length; j++) {
-                const s = dayData.stops[j];
+        try {
+          const res = await fetch("/api/ai/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages: [{ role: "user", content: userPrompt }], systemPrompt, max_tokens: 8192 }),
+          });
+          const data = await res.json();
+          const contentBlocks: Array<{ type: string; text?: string }> = Array.isArray(data.content) ? data.content : [];
+          const fullContent = contentBlocks.filter(b => b.type === "text").map(b => b.text || "").join("\n") || (typeof data.content === "string" ? data.content : "");
+          const jsonMatch = fullContent.match(/```json\s*([\s\S]*?)```/);
+          if (!jsonMatch) throw new Error("No JSON in response");
+
+          const parsed = JSON.parse(jsonMatch[1]);
+          const daysArr: DayData[] = parsed.days || [];
+          if (daysArr.length === 0) throw new Error("No days in response");
+
+          for (const dayData of daysArr) {
+            const color = dayColors[(dayData.day_number - 1) % dayColors.length];
+            const { data: dayRow } = await supabase.from("days").insert({
+              trip_id: tripId,
+              day_number: dayData.day_number,
+              title: dayData.title,
+              color,
+              narrative: dayData.narrative || null,
+              reasoning: dayData.reasoning || null,
+              vibe_status: "locked",
+            }).select().single();
+            if (!dayRow) continue;
+
+            const stops = dayData.stops || [];
+            if (stops.length > 0) {
+              const stopRows = stops.map((s, j) => {
                 const isTransit = s.stop_type === "transit";
-                await supabase.from("stops").insert({
+                return {
                   trip_id: tripId,
                   day_id: dayRow.id,
                   name: s.name,
@@ -151,16 +186,57 @@ export default function CuratingPage() {
                   cost_estimate: s.cost_estimate ?? null,
                   stop_type: s.stop_type || "visit",
                   sort_order: j,
-                  created_by: m.id,
-                });
-              }
+                  created_by: m!.id,
+                };
+              });
+              await supabase.from("stops").insert(stopRows);
             }
+
+            summaries.push({
+              day_number: dayData.day_number,
+              title: dayData.title,
+              stops: stops.slice(0, 5).map(s => s.name),
+            });
+            saved += 1;
+            setGeneratedDays(saved);
           }
+          return true;
+        } catch (err) {
+          console.error(`Chunk ${startDay}-${endDay} failed (attempt ${attempt + 1}):`, err);
+          if (attempt === 0) return generateChunk(startDay, endDay, 1);
+          return false;
+        }
+      }
+
+      for (let i = 0; i < chunks; i++) {
+        const startDay = i * chunkSize + 1;
+        const endDay = Math.min((i + 1) * chunkSize, total);
+        const ok = await generateChunk(startDay, endDay);
+        if (!ok) {
+          setError(`Generated ${saved} of ${total} days. Some days couldn't be created — you can add them from the dashboard.`);
+          setTimeout(() => router.push(`/trip/${tripId}`), 2500);
+          return;
+        }
+      }
+
+      try {
+        const summaryRes = await fetch("/api/ai/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [{ role: "user", content: `Based on the itinerary you just built across ${total} days for ${group} going to ${dest}, write an exciting 3-4 sentence trip summary paragraph. It should make them feel the trip before they see the details — an emotional preview, not a table of contents.\n\nDays:\n${summaries.map(s => `Day ${s.day_number} — ${s.title}`).join("\n")}` }],
+            systemPrompt: "You are the trip's Co-Pilot. Write short, vivid, opinionated trip summary paragraphs. Respond with just the paragraph text — no preamble, no JSON, no quotes.",
+            max_tokens: 512,
+          }),
+        });
+        const summaryData = await summaryRes.json();
+        const summaryBlocks: Array<{ type: string; text?: string }> = Array.isArray(summaryData.content) ? summaryData.content : [];
+        const summaryText = summaryBlocks.filter(b => b.type === "text").map(b => b.text || "").join("\n").trim();
+        if (summaryText) {
+          await supabase.from("trips").update({ trip_summary: summaryText }).eq("id", tripId);
         }
       } catch (err) {
-        console.error("Curation failed:", err);
-        setError("Trip curation failed. Please try again.");
-        return;
+        console.error("Trip summary generation failed:", err);
       }
 
       router.push(`/trip/${tripId}`);
@@ -169,7 +245,6 @@ export default function CuratingPage() {
     curate();
   }, [tripId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Progress steps — personality-aligned
   const dest = trip?.destination || "your destination";
   const progressSteps = [
     `Walking the streets of ${dest} in my head`,
@@ -184,18 +259,33 @@ export default function CuratingPage() {
 
   if (error) return (
     <div className="h-screen flex items-center justify-center bg-white">
-      <p className="text-red-500">{error}</p>
+      <p className="text-red-500 text-center max-w-sm px-4">{error}</p>
     </div>
   );
+
+  const progressPct = totalDays > 0 ? Math.min(100, (generatedDays / totalDays) * 100) : 0;
 
   return (
     <div className="h-screen flex items-center justify-center bg-white">
       <div className="text-center max-w-sm mx-auto px-4">
         <div className="w-12 h-12 rounded-full border-[3px] border-gray-200 border-t-emerald-500 animate-spin mx-auto mb-6" />
         <p className="text-[18px] font-semibold text-gray-900 mb-2">Your Co-Pilot is building your trip</p>
-        <p className="text-[13px] text-gray-500 mb-6">
-          Putting together {dest}{trip?.travel_dates ? ` for ${trip.travel_dates}` : ""} — this takes a minute because I'm being picky.
+        <p className="text-[13px] text-gray-500 mb-3">
+          Putting together {dest}{trip?.travel_dates ? ` for ${trip.travel_dates}` : ""} — this takes a minute because I&apos;m being picky.
         </p>
+        {totalDays > 0 && (
+          <>
+            <p className="text-[13px] text-gray-500 mb-2">
+              Building days {generatedDays} of {totalDays}...
+            </p>
+            <div className="w-full h-[3px] bg-gray-100 rounded-full overflow-hidden mb-6">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${progressPct}%`, backgroundColor: "#1D9E75" }}
+              />
+            </div>
+          </>
+        )}
         <div className="flex flex-col gap-2.5 text-left">
           {progressSteps.map((step, i) => (
             <div key={step} className="flex items-center gap-2.5 text-[13px] animate-fade-in" style={{ animationDelay: `${i * 1.2}s`, animationFillMode: "backwards" }}>
