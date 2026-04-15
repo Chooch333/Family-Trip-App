@@ -203,6 +203,7 @@ export default function MapCinematic({ tripId, destination, refreshTrigger }: Ma
         style={{
           position: "absolute",
           inset: 0,
+          visibility: tilesLoaded ? "visible" : "hidden",
           opacity: tilesLoaded ? 1 : 0,
           transition: "opacity 1.5s ease",
           filter: "brightness(0.55) saturate(0.7)",
