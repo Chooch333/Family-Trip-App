@@ -1292,17 +1292,15 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
 
   return (
     <>
-      {/* Trip summary splash overlay */}
-      {showTripSplash && (trip as Trip & { trip_summary?: string | null }).trip_summary && (
-        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-2xl max-w-lg mx-4 p-8 shadow-2xl">
-            <h2 className="text-[20px] font-semibold text-gray-900 mb-4">{trip.name}</h2>
-            <p className="text-[14px] text-gray-700 leading-relaxed mb-6">{(trip as Trip & { trip_summary?: string | null }).trip_summary}</p>
-            <button onClick={() => setShowTripSplash(false)} className="w-full py-3 rounded-lg text-white font-medium text-[14px]" style={{ backgroundColor: "#1D9E75" }}>
-              Dive in
-            </button>
-          </div>
-        </div>
+      {/* Trip tour slideshow overlay */}
+      {showTripTour && days.length > 0 && stops.length > 0 && (
+        <TripTour
+          trip={trip}
+          days={days}
+          stops={stops}
+          dayColors={dayColors}
+          onComplete={() => setShowTripTour(false)}
+        />
       )}
 
       {/* Lightbox overlay */}
