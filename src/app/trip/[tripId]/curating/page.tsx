@@ -356,8 +356,6 @@ export default function CuratingPage() {
     </div>
   );
 
-  const progressPct = totalDays > 0 ? Math.min(100, (generatedDays / totalDays) * 100) : 0;
-
   // ── PHASE: TOUR ──
   if (phase === "tour" && trip) {
     return (
