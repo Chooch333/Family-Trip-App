@@ -516,7 +516,7 @@ export default function TripTour({ tripId, trip, onComplete, generationComplete 
 
   // Build slides
   const dayColors = generateDayColors(days.length);
-  const daySlides = days.length > 0 ? buildDaySlides(currentTrip, days, stops, dayColors) : [];
+  const daySlides = buildDaySlides(currentTrip, days, stops, dayColors);
   const wrapUpSlides = generationComplete ? buildWrapUpSlides(currentTrip, stops) : [];
   const slides = [...daySlides, ...wrapUpSlides];
 
