@@ -204,6 +204,14 @@ export default function CuratingPage() {
 
           for (const dayData of daysArr) {
             const color = dayColors[(dayData.day_number - 1) % dayColors.length];
+
+            // Fetch slide images before insert so they arrive with the day data
+            const dayCity = dayData.title.split(/[—\-,]/)[0].trim();
+            const imgQuery = dayCity && dayCity.toLowerCase() !== dest.toLowerCase()
+              ? `${dayCity} travel`
+              : `${dest} travel`;
+            const slideImages = (await fetchSlideImages(imgQuery)).slice(0, 2);
+
             const { data: dayRow } = await supabase.from("days").insert({
               trip_id: tripId,
               day_number: dayData.day_number,
@@ -212,6 +220,7 @@ export default function CuratingPage() {
               narrative: dayData.narrative || null,
               reasoning: dayData.reasoning || null,
               vibe_status: "locked",
+              slide_images: slideImages.length > 0 ? slideImages : [],
             }).select().single();
             if (!dayRow) continue;
 
