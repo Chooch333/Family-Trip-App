@@ -180,6 +180,7 @@ export default function CuratingPage() {
                   name: s.name,
                   description: s.description || null,
                   ai_note: s.ai_note || null,
+                  is_anchor: !!(s as StopData & { is_anchor?: boolean }).is_anchor,
                   latitude: isTransit ? null : (s.latitude || null),
                   longitude: isTransit ? null : (s.longitude || null),
                   start_time: s.start_time || null,
