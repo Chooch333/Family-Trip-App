@@ -310,13 +310,14 @@ export default function CuratingPage() {
     router.push(`/trip/${tripId}`);
   }
 
-  // If generation finishes and we're still on cinematic (edge case — tour never launched)
+  // If generation finishes and we're still on cinematic with NO tour content, redirect
+  // If there ARE enough days for the tour, let the cinematic→tour transition handle it
   useEffect(() => {
-    if (generationDone && phase === "cinematic" && !tourLaunched.current) {
+    if (generationDone && phase === "cinematic" && !tourLaunched.current && generatedDays < 2) {
       const timer = setTimeout(() => router.push(`/trip/${tripId}`), 2000);
       return () => clearTimeout(timer);
     }
-  }, [generationDone, phase, tripId, router]);
+  }, [generationDone, phase, tripId, router, generatedDays]);
   const progressSteps = [
     `Walking the streets of ${dest} in my head`,
     "Checking what's actually worth the hype",
