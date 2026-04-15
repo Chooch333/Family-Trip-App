@@ -280,18 +280,6 @@ function buildDaySlides(
   let gradientIdx = 0;
   let lastCardPos: CardPosition | null = null;
 
-  // Opening pitch
-  const tripSummary = (trip as Trip & { trip_summary?: string }).trip_summary ||
-    `Here's what I'm building for ${buildGroupRef(trip)} in ${trip.destination || trip.name}.`;
-  slides.push({
-    layout: "center", key: "pitch",
-    bg: "linear-gradient(135deg, #1a2a1a 0%, #0a1a0a 50%, #2a1a0a 100%)",
-    label: "Claude built you a trip", labelColor: "#5DCAA5",
-    headline: trip.name, body: tripSummary,
-    buttons: { primary: "Tour the trip", secondary: "Dive in" },
-  });
-  gradientIdx++;
-
   // ── Hype slides — personality-driven, render from trip metadata immediately ──
 
   // Destination showcase
