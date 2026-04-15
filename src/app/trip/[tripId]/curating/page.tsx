@@ -156,11 +156,21 @@ export default function CuratingPage() {
       const hypeImagePromise = (async () => {
         try {
           const [destImgs, foodImgs, gemsImgs] = await Promise.all([
-            fetchSlideImages(`${dest} landscape travel`),
-            fetchSlideImages(`${dest} food cuisine restaurant`),
-            fetchSlideImages(`${dest} hidden street local neighborhood`),
+            fetchSlideImages(`${dest} travel scenic`),
+            fetchSlideImages(`${dest} food cuisine`),
+            fetchSlideImages(`${dest} street neighborhood local`),
           ]);
-          const allImages = [...destImgs.slice(0, 2), ...foodImgs.slice(0, 2), ...gemsImgs.slice(0, 2)];
+
+          // Build 6 images: 2 per hype slide, with fallback to destination images
+          const destPool = destImgs.slice(0, 4);
+          const foodPool = foodImgs.length >= 2 ? foodImgs.slice(0, 2) : destPool.slice(0, 2);
+          const gemsPool = gemsImgs.length >= 2 ? gemsImgs.slice(0, 2) : destPool.slice(0, 2);
+          const allImages = [
+            ...destPool.slice(0, 2),
+            ...foodPool.slice(0, 2),
+            ...gemsPool.slice(0, 2),
+          ];
+
           if (allImages.length > 0) {
             await supabase.from("trips").update({ slide_images: allImages }).eq("id", tripId);
           }
