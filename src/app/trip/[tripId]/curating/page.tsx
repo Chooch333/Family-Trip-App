@@ -249,7 +249,11 @@ export default function CuratingPage() {
         console.error("Trip summary generation failed:", err);
       }
 
-      router.push(`/trip/${tripId}`);
+      // Mark generation complete — tour phase handles redirect
+      setGenerationDone(true);
+      if (phase !== "tour") {
+        router.push(`/trip/${tripId}`);
+      }
     }
 
     curate();
