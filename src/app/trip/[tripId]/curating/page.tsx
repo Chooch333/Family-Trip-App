@@ -1,9 +1,13 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { getMemberForTrip } from "@/lib/session";
 import { supabase } from "@/lib/supabase";
-import type { Trip, TripMember } from "@/lib/database.types";
+import TripTour from "@/components/TripTour";
+import type { Trip, TripMember, Day, Stop } from "@/lib/database.types";
+
+const MapCinematic = dynamic(() => import("@/components/MapCinematic"), { ssr: false });
 
 function generateDayColors(count: number): string[] {
   if (count <= 0) return [];
