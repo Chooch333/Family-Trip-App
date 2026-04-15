@@ -32,7 +32,6 @@ export default function MapCinematic({ tripId, refreshTrigger }: MapCinematicPro
 
     async function initMap() {
       const L = (await import("leaflet")).default;
-      await import("leaflet/dist/leaflet.css");
 
       if (cancelled || !mapRef.current) return;
 
