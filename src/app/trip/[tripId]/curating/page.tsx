@@ -217,6 +217,16 @@ export default function CuratingPage() {
               title: dayData.title,
               stops: stops.slice(0, 5).map(s => s.name),
             });
+
+            // Fetch 2 background images for this day's slide (non-blocking)
+            const dayCity = dayData.title.split(/[—\-,]/)[0].trim();
+            const imgQuery = dayCity ? `${dayCity} ${dest} travel` : `${dest} travel`;
+            fetchSlideImages(imgQuery).then(urls => {
+              if (urls.length > 0) {
+                supabase.from("days").update({ slide_images: urls }).eq("id", dayRow.id).then(() => {});
+              }
+            });
+
             saved += 1;
             setGeneratedDays(saved);
           }
