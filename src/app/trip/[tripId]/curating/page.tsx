@@ -347,49 +347,27 @@ export default function CuratingPage() {
       <div className="h-screen relative" style={{ background: "#0a0a0a" }}>
         {trip && <MapCinematic tripId={tripId} destination={trip.destination || trip.name} refreshTrigger={generatedDays} />}
 
-        {/* Floating progress overlay */}
+        {/* Curating overlay */}
         <div style={{
-          position: "absolute", top: 24, left: "50%", transform: "translateX(-50%)",
-          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)",
-          borderRadius: 10, padding: "14px 24px", zIndex: 10,
-          textAlign: "center", minWidth: 260,
+          position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
+          zIndex: 10, textAlign: "center",
         }}>
-          <div style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.8)", marginBottom: 6 }}>
-            Your Co-Pilot is building your trip
+          <div style={{
+            width: 32, height: 32, borderRadius: "50%",
+            border: "2.5px solid rgba(255,255,255,0.15)",
+            borderTopColor: "rgba(255,255,255,0.6)",
+            animation: "curateSpin 1.2s ease-in-out infinite",
+            margin: "0 auto 16px",
+          }} />
+          <div style={{ fontSize: 15, fontWeight: 500, color: "rgba(255,255,255,0.7)", letterSpacing: 0.3 }}>
+            I&apos;m curating your trip
           </div>
-          {totalDays > 0 && (
-            <>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>
-                Day {generatedDays} of {totalDays}
-              </div>
-              <div style={{ width: "100%", height: 3, background: "rgba(255,255,255,0.1)", borderRadius: 2, overflow: "hidden" }}>
-                <div style={{ height: "100%", borderRadius: 2, background: "#1D9E75", transition: "width 0.5s ease", width: `${progressPct}%` }} />
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Floating Co-Pilot status messages */}
-        <div style={{
-          position: "absolute", bottom: 24, right: 24, zIndex: 10,
-          display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end",
-        }}>
-          {progressSteps.slice(0, Math.min(progressSteps.length, Math.floor(generatedDays / (totalDays / progressSteps.length || 1)) + 1)).map((step, i) => (
-            <div key={step} style={{
-              fontSize: 12, color: "rgba(255,255,255,0.35)", fontWeight: 500,
-              animation: "fadeIn 0.5s ease forwards",
-              animationDelay: `${i * 0.3}s`,
-              opacity: 0,
-            }}>
-              {step}
-            </div>
-          ))}
         </div>
 
         <style>{`
-          @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
+          @keyframes curateSpin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
           }
         `}</style>
       </div>
