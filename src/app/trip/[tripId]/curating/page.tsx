@@ -152,6 +152,23 @@ export default function CuratingPage() {
       const summaries: GeneratedDaySummary[] = [];
       let saved = 0;
 
+      // Fetch hype slide images (destination-level) — runs in parallel with first chunk
+      const hypeImagePromise = (async () => {
+        try {
+          const [destImgs, foodImgs, gemsImgs] = await Promise.all([
+            fetchSlideImages(`${dest} landscape travel`),
+            fetchSlideImages(`${dest} food cuisine restaurant`),
+            fetchSlideImages(`${dest} hidden street local neighborhood`),
+          ]);
+          const allImages = [...destImgs.slice(0, 2), ...foodImgs.slice(0, 2), ...gemsImgs.slice(0, 2)];
+          if (allImages.length > 0) {
+            await supabase.from("trips").update({ slide_images: allImages }).eq("id", tripId);
+          }
+        } catch (err) {
+          console.error("Hype image fetch failed:", err);
+        }
+      })();
+
       async function generateChunk(startDay: number, endDay: number, attempt = 0): Promise<boolean> {
         const prevContext = summaries.length > 0
           ? `\n\nDays already planned:\n${summaries.map(s => `Day ${s.day_number} — ${s.title}: ${s.stops.join(", ")}`).join("\n")}\n\nNow generate days ${startDay} through ${endDay}. Maintain geographic flow and avoid repeating locations from previous days. Same JSON format.`
