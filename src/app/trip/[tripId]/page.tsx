@@ -207,6 +207,8 @@ export default function TripDashboard() {
   const [lightboxIndex, setLightboxIndex] = useState(0);
   // Trip summary splash
   const [showTripSplash, setShowTripSplash] = useState(false);
+  // Trip tour slideshow
+  const [showTripTour, setShowTripTour] = useState(false);
   // Trip switcher
   const [allTrips, setAllTrips] = useState<TripSwitcherItem[]>([]);
   // Accommodation
