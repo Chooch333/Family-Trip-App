@@ -376,10 +376,11 @@ export default function TripTour({
   stops,
   dayColors,
   onComplete,
+  isPartial,
 }: TripTourProps) {
   const slides = useMemo(
-    () => buildSlides(trip, days, stops, dayColors),
-    [trip, days, stops, dayColors]
+    () => buildSlides(trip, days, stops, dayColors, isPartial),
+    [trip, days, stops, dayColors, isPartial]
   );
 
   const [current, setCurrent] = useState(0);
