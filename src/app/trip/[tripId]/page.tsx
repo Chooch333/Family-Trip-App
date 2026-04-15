@@ -28,36 +28,6 @@ interface TripSwitcherItem {
   role: "organizer" | "member";
 }
 
-// --- Stop type badge helper ---
-function getStopBadge(stop: Stop): { label: string; bg: string; text: string } | null {
-  const name = stop.name.toLowerCase();
-  const desc = (stop.description || "").toLowerCase();
-  const tags = Array.isArray(stop.tags) ? stop.tags.map((t: string) => t.toLowerCase()) : [];
-  const all = `${name} ${desc} ${tags.join(" ")}`;
-
-  if (all.match(/\b(breakfast|lunch|dinner|restaurant|cafe|coffee|eat|food|bistro|pizz|taco|bakery|brunch|gelato|ice cream)\b/))
-    return { label: "Food", bg: "bg-orange-100", text: "text-orange-700" };
-  if (all.match(/\b(walk|hike|trail|stroll|park|garden|beach|nature|waterfall)\b/))
-    return { label: "Walking", bg: "bg-green-100", text: "text-green-700" };
-  if (all.match(/\b(museum|gallery|castle|monument|cathedral|church|temple|ruins|historic|tour)\b/))
-    return { label: "Visit", bg: "bg-blue-100", text: "text-blue-700" };
-  if (all.match(/\b(shop|market|store|souvenir|mall|boutique)\b/))
-    return { label: "Shopping", bg: "bg-pink-100", text: "text-pink-700" };
-  return null;
-}
-
-// --- 12-hour time formatter ---
-function formatTime12(time: string | null): string {
-  if (!time) return "TBD";
-  const parts = time.slice(0, 5).split(":");
-  let h = parseInt(parts[0], 10);
-  const m = parts[1] || "00";
-  const ampm = h >= 12 ? "PM" : "AM";
-  if (h === 0) h = 12;
-  else if (h > 12) h -= 12;
-  return `${h}:${m} ${ampm}`;
-}
-
 // --- Leaflet Maps (dynamic, SSR-safe) ---
 const TripMap = dynamic(() => import("./TripMap"), { ssr: false, loading: () => (
   <div className="flex-1 bg-gray-100 flex items-center justify-center">
