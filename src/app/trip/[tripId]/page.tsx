@@ -1159,21 +1159,13 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
 
       {/* Lightbox overlay */}
       {lightboxStop && lightboxPhotos.length > 0 && (
-        <div className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center" onClick={closeLightbox}>
-          <div className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
-            <img src={lightboxPhotos[lightboxIndex]?.url} alt="" className="max-w-full max-h-[85vh] object-contain rounded-lg" />
-            <button onClick={closeLightbox} className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-lg">&times;</button>
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-3 py-1 rounded-full">
-              {lightboxIndex + 1} / {lightboxPhotos.length}
-            </div>
-            {lightboxPhotos.length > 1 && (
-              <>
-                <button onClick={lightboxPrev} className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-xl">&lsaquo;</button>
-                <button onClick={lightboxNext} className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-xl">&rsaquo;</button>
-              </>
-            )}
-          </div>
-        </div>
+        <Lightbox
+          photos={lightboxPhotos}
+          index={lightboxIndex}
+          onClose={closeLightbox}
+          onPrev={lightboxPrev}
+          onNext={lightboxNext}
+        />
       )}
 
       <TripLayout
