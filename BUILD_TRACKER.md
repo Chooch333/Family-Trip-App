@@ -71,10 +71,10 @@
   - is_anchor saved to Supabase during curation insert
 
 ### Future optimizations (not blocking):
-- [ ] Map cinematic animation during loading (pins drop as coordinates arrive)
-- [ ] 75% completion threshold gate for progressive tour reveal
+- [x] Map cinematic animation during loading (pins drop as coordinates arrive)
+- [x] 75% completion threshold gate for progressive tour reveal
+- [x] Curation → map cinematic → tour seamless flow
 - [ ] Destination photography integration for tour slide backgrounds
-- [ ] Curation → map cinematic → tour seamless flow
 
 ---
 
