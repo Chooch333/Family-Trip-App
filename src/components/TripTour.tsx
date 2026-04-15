@@ -102,6 +102,174 @@ function buildGroupRef(trip: Trip): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// HYPE SLIDE TEXT BUILDERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function extractSeason(travelDates: string): string | null {
+  const lower = (travelDates || "").toLowerCase();
+  const monthMap: Record<string, string> = {
+    jan: "winter", feb: "winter", mar: "spring", apr: "spring",
+    may: "late spring", jun: "early summer", jul: "summer", aug: "summer",
+    sep: "early fall", oct: "fall", nov: "late fall", dec: "winter",
+  };
+  for (const [abbr, season] of Object.entries(monthMap)) {
+    if (lower.includes(abbr)) return season;
+  }
+  return null;
+}
+
+function extractKidsInfo(groupDetail: string): { hasKids: boolean; ages: string[] } {
+  if (!groupDetail) return { hasKids: false, ages: [] };
+  const ageMatch = groupDetail.match(/ages?\s*([\d,\s]+(?:and\s+\d+)?)/i);
+  if (ageMatch) {
+    const ages = ageMatch[1].replace(/and/g, ",").split(",").map(s => s.trim()).filter(Boolean);
+    return { hasKids: true, ages };
+  }
+  if (/kid|child|children/i.test(groupDetail)) return { hasKids: true, ages: [] };
+  return { hasKids: false, ages: [] };
+}
+
+function buildDestinationHype(trip: Trip): string {
+  const dest = trip.destination || trip.name;
+  const groupRef = buildGroupRef(trip);
+  const season = extractSeason(trip.travel_dates || "");
+  const kids = extractKidsInfo(trip.group_detail || "");
+  const interests = (trip.interests || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+  const extraNotes = trip.extra_notes || "";
+  const gt = (trip.group_type || "").toLowerCase();
+
+  const parts: string[] = [];
+
+  // Season-aware opener
+  if (season) {
+    parts.push(`${dest} in ${season} is a different experience than most travelers get.`);
+    if (season.includes("summer")) {
+      parts.push(`The days are long, the energy is high, and ${groupRef} will feel it the moment you step outside.`);
+    } else if (season.includes("spring")) {
+      parts.push(`The crowds haven't descended yet, the weather is on your side, and ${groupRef} will have room to breathe at every stop.`);
+    } else if (season.includes("fall")) {
+      parts.push(`The light changes, the tourist rush fades, and the locals start to reclaim their city. That's when ${dest} shows you what it's really about.`);
+    } else if (season.includes("winter")) {
+      parts.push(`Fewer crowds, sharper light, and the kind of atmosphere that makes every warm café feel like a discovery. ${groupRef.charAt(0).toUpperCase() + groupRef.slice(1)} will get a version of ${dest} most people never see.`);
+    }
+  } else {
+    parts.push(`I've been thinking about what makes ${dest} work specifically for ${groupRef}.`);
+  }
+
+  // Kids-specific line
+  if (kids.hasKids && kids.ages.length > 0) {
+    const youngest = Math.min(...kids.ages.map(Number).filter(n => !isNaN(n)));
+    const oldest = Math.max(...kids.ages.map(Number).filter(n => !isNaN(n)));
+    if (youngest && oldest && youngest !== oldest) {
+      parts.push(`I'm building this for ages ${youngest} through ${oldest} — which means every stop has to work for someone who wants to run ahead AND someone who might need to be carried home.`);
+    } else if (youngest) {
+      parts.push(`With a ${youngest}-year-old in the mix, the pacing matters as much as the places. I've built in breathing room.`);
+    }
+  } else if (gt === "couple") {
+    parts.push(`This isn't a checklist trip. I'm building something with the kind of pace where you actually talk to each other at dinner.`);
+  }
+
+  // Interests weave
+  if (interests.length >= 2) {
+    parts.push(`You said ${interests.slice(0, 3).join(", ")} — I'm weaving all of that in, not as separate line items, but as the connective tissue of each day.`);
+  } else if (interests.length === 1) {
+    parts.push(`You mentioned ${interests[0]} — that's not a sidebar, it's the throughline.`);
+  }
+
+  // Extra notes nod
+  if (extraNotes && extraNotes.length > 5) {
+    if (/first time/i.test(extraNotes)) {
+      parts.push(`And since this is your first time — I'm going to make sure you hit the moments that matter without drowning in a 47-stop itinerary.`);
+    } else if (/dog|pet/i.test(extraNotes)) {
+      parts.push(`Your dog is part of the trip — I've kept that in mind for every outdoor stop and transit decision.`);
+    }
+  }
+
+  // Fallback if we ended up with only one line
+  if (parts.length < 2) {
+    parts.push(`Not a highlight reel. A real trip, built around how ${groupRef} actually travel.`);
+  }
+
+  return parts.join(" ");
+}
+
+function buildFoodHype(trip: Trip): string {
+  const dest = trip.destination || trip.name;
+  const groupRef = buildGroupRef(trip);
+  const kids = extractKidsInfo(trip.group_detail || "");
+  const gt = (trip.group_type || "").toLowerCase();
+  const interests = (trip.interests || "").split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+  const hasFood = interests.includes("food") || interests.includes("cuisine") || interests.includes("cooking");
+
+  const parts: string[] = [];
+
+  // Philosophy opener — destination-aware
+  const destLower = dest.toLowerCase();
+  if (/italy|rome|florence|naples|amalfi/i.test(destLower)) {
+    parts.push(`In Italy, the best meals find you — but only if you're in the right neighborhood at the right time.`);
+    parts.push(`I'm not sending ${groupRef} to the places with laminated English menus on the sidewalk.`);
+  } else if (/france|paris|lyon|provence/i.test(destLower)) {
+    parts.push(`French food isn't about finding the Michelin star — it's about the corner brasserie that's been open since before your parents were born.`);
+  } else if (/japan|tokyo|kyoto|osaka/i.test(destLower)) {
+    parts.push(`In Japan, the food is the trip. The ¥800 ramen counter with six stools and no sign is better than most restaurants you've been to.`);
+  } else if (/mexico|oaxaca|cdmx/i.test(destLower)) {
+    parts.push(`The food here isn't a restaurant experience — it's a street experience. The best things you'll eat will cost less than a dollar and come from someone who's been making the same thing for thirty years.`);
+  } else {
+    parts.push(`Here's my approach to food on this trip: every meal should feel like it belongs where you already are that day.`);
+    parts.push(`No detours across town for a trending restaurant. The food follows the route.`);
+  }
+
+  // Family-specific food line
+  if (kids.hasKids) {
+    const ages = kids.ages.map(Number).filter(n => !isNaN(n));
+    const youngest = ages.length > 0 ? Math.min(...ages) : null;
+    if (youngest && youngest <= 5) {
+      parts.push(`Every food stop has something a ${youngest}-year-old will point at and say yes — no negotiations required.`);
+    } else if (youngest && youngest <= 10) {
+      parts.push(`I'm picking places where kids can actually eat, not places where they sit quietly and stare at a prix fixe menu.`);
+    } else {
+      parts.push(`Your kids are old enough to eat the real food here — and I'm going to make sure they get the chance.`);
+    }
+  } else if (gt === "couple") {
+    parts.push(`I'll mix in a couple of dinner spots worth getting dressed for — but some of the best meals will be the ones you didn't plan.`);
+  }
+
+  // Food interest acknowledgment
+  if (hasFood) {
+    parts.push(`You flagged food as an interest — so I'm going deeper than "good restaurant near your hotel." Expect places with a story.`);
+  }
+
+  return parts.join(" ");
+}
+
+function buildGemsHype(trip: Trip): string {
+  const dest = trip.destination || trip.name;
+  const groupRef = buildGroupRef(trip);
+  const kids = extractKidsInfo(trip.group_detail || "");
+  const gt = (trip.group_type || "").toLowerCase();
+
+  const parts: string[] = [];
+
+  parts.push(`This is the part I'm most excited about.`);
+  parts.push(`Anyone can Google "top 10 things to do in ${dest}." I'm going to show ${groupRef} the stops most people walk right past.`);
+
+  // Group-specific angle
+  if (kids.hasKids && kids.ages.length > 0) {
+    parts.push(`The kind of places where your kids will remember the weird little detail — the fountain, the cat, the gelato window — twenty years from now.`);
+  } else if (gt === "couple") {
+    parts.push(`A side street with no one else on it. A viewpoint the tour buses can't reach. The kind of moments you'll reference for years.`);
+  } else if (gt === "friends") {
+    parts.push(`The spots that become inside jokes and group chat names. That's what I'm looking for.`);
+  } else {
+    parts.push(`Timing tricks, neighborhood knowledge, the local rhythm — the things that turn a trip into a story worth telling.`);
+  }
+
+  parts.push(`That's the kind of trip I build.`);
+
+  return parts.join(" ");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SLIDE BUILDERS — separated so day slides grow independently of wrap-up
 // ─────────────────────────────────────────────────────────────────────────────
 
