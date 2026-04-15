@@ -245,12 +245,15 @@ export default function CuratingPage() {
               stops: stops.slice(0, 5).map(s => s.name),
             });
 
-            // Fetch 2 background images for this day's slide (non-blocking)
+            // Fetch background images for this day's slide
             const dayCity = dayData.title.split(/[—\-,]/)[0].trim();
-            const imgQuery = dayCity ? `${dayCity} ${dest} travel` : `${dest} travel`;
+            const imgQuery = dayCity && dayCity.toLowerCase() !== dest.toLowerCase()
+              ? `${dayCity} travel`
+              : `${dest} travel`;
             fetchSlideImages(imgQuery).then(urls => {
-              if (urls.length > 0) {
-                supabase.from("days").update({ slide_images: urls }).eq("id", dayRow.id).then(() => {});
+              const slideUrls = urls.slice(0, 2);
+              if (slideUrls.length > 0) {
+                supabase.from("days").update({ slide_images: slideUrls }).eq("id", dayRow.id).then(() => {});
               }
             });
 
