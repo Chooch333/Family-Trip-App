@@ -1,0 +1,739 @@
+"use client";
+import { useMemo, useEffect, useCallback, useState } from "react";
+import type { Trip, Day, Stop } from "@/lib/database.types";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface CardPosition {
+  top: string;
+  left: string;
+  right: string;
+  bottom: string;
+}
+
+interface SlideBase {
+  bg: string;
+}
+
+interface CenterSlide extends SlideBase {
+  layout: "center";
+  label: string;
+  headline: string;
+  body: string;
+  labelColor: string;
+  buttons?: { primary: string; secondary?: string };
+}
+
+interface CardSlide extends SlideBase {
+  layout: "card";
+  position: CardPosition;
+  cardLabel: string;
+  cardLabelColor: string;
+  dayTitle: string;
+  dayColor: string;
+  body: string;
+  stops: {
+    name: string;
+    meta: string;
+    time: string;
+    isAnchor: boolean;
+    color: string;
+  }[];
+}
+
+type Slide = CenterSlide | CardSlide;
+
+interface TripTourProps {
+  trip: Trip;
+  days: Day[];
+  stops: Stop[];
+  dayColors: string[];
+  onComplete: () => void;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POSITIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const POS = {
+  topLeft:     { top: "24px", left: "24px", right: "auto", bottom: "auto" },
+  topRight:    { top: "24px", left: "auto", right: "24px", bottom: "auto" },
+  bottomRight: { top: "auto", left: "auto", right: "24px", bottom: "24px" },
+  bottomLeft:  { top: "auto", left: "24px", right: "auto", bottom: "24px" },
+  topLeftLow:  { top: "60px", left: "24px", right: "auto", bottom: "auto" },
+};
+
+const TOP_POSITIONS = [POS.topLeft, POS.topRight, POS.topLeftLow];
+const ANY_POSITIONS = [POS.topLeft, POS.topRight, POS.bottomRight, POS.bottomLeft, POS.topLeftLow];
+
+function pickPosition(candidates: CardPosition[], lastUsed: CardPosition | null): CardPosition {
+  const available = lastUsed
+    ? candidates.filter(
+        (p) => p.top !== lastUsed.top || p.left !== lastUsed.left
+      )
+    : candidates;
+  const pool = available.length > 0 ? available : candidates;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GRADIENTS — destination-evocative placeholders
+// ─────────────────────────────────────────────────────────────────────────────
+
+const GRADIENTS = [
+  "linear-gradient(160deg, #5a3a1a, #8a6a3a, #4a2a0a)",
+  "linear-gradient(160deg, #1a2a4a, #2a3a5a, #0a1a3a)",
+  "linear-gradient(160deg, #2a4a2a, #4a6a3a, #1a3a1a)",
+  "linear-gradient(135deg, #3a1a0a, #6a3a1a, #2a1508)",
+  "linear-gradient(135deg, #2a2a3a, #3a2a4a, #1a1a2a)",
+  "linear-gradient(160deg, #1a3a4a, #2a4a5a, #0a2a3a)",
+  "linear-gradient(135deg, #4a3018, #8a6a3a, #3a2010)",
+  "linear-gradient(160deg, #3a2a1a, #6a4a2a, #2a1a0a)",
+];
+
+function getGradient(index: number): string {
+  return GRADIENTS[index % GRADIENTS.length];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function getDistinctCities(days: Day[]): { city: string; firstDayIndex: number }[] {
+  const seen = new Set<string>();
+  const cities: { city: string; firstDayIndex: number }[] = [];
+  for (let i = 0; i < days.length; i++) {
+    const title = (days[i].title || "").trim();
+    const city = title.split(/[—\-,]/)[0].trim();
+    if (city && !seen.has(city.toLowerCase())) {
+      seen.add(city.toLowerCase());
+      cities.push({ city, firstDayIndex: i });
+    }
+  }
+  return cities;
+}
+
+function formatTime12(time: string | null): string {
+  if (!time) return "";
+  const parts = time.slice(0, 5).split(":");
+  let h = parseInt(parts[0], 10);
+  const m = parts[1] || "00";
+  const ampm = h >= 12 ? "PM" : "AM";
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${m} ${ampm}`;
+}
+
+function buildGroupRef(trip: Trip): string {
+  const gt = (trip.group_type || "").toLowerCase();
+  const detail = trip.group_detail || "";
+  if (gt === "family") return detail ? `your family` : "the family";
+  if (gt === "couple") return "you two";
+  if (gt === "friends") return "the crew";
+  return "you";
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPLATE ENGINE — builds slides from curation data
+// ─────────────────────────────────────────────────────────────────────────────
+
+function buildSlides(
+  trip: Trip,
+  days: Day[],
+  stops: Stop[],
+  dayColors: string[]
+): Slide[] {
+  const slides: Slide[] = [];
+  const groupRef = buildGroupRef(trip);
+  let gradientIdx = 0;
+  let lastCardPos: CardPosition | null = null;
+
+  // ── 1. Opening pitch ──
+  const tripSummary =
+    (trip as Trip & { trip_summary?: string }).trip_summary ||
+    `A ${days.length}-day trip to ${trip.destination || trip.name}. Your Co-Pilot put this together for ${groupRef}.`;
+  slides.push({
+    layout: "center",
+    bg: "linear-gradient(135deg, #1a2a1a 0%, #0a1a0a 50%, #2a1a0a 100%)",
+    label: "Your Co-Pilot built you a trip",
+    labelColor: "#5DCAA5",
+    headline: `${trip.name}`,
+    body: tripSummary,
+    buttons: { primary: "Tour the trip", secondary: "Dive in" },
+  });
+  gradientIdx++;
+
+  // ── Identify cities ──
+  const cities = getDistinctCities(days);
+  const multiCity = cities.length >= 2;
+
+  // ── Find best anchor spotlight ──
+  const anchoredStops = stops.filter((s) => s.is_anchor && s.stop_type !== "transit");
+  const bestAnchor = anchoredStops.sort(
+    (a, b) => (b.ai_note || "").length - (a.ai_note || "").length
+  )[0];
+
+  // ── Find hidden gem (best non-anchor ai_note) ──
+  const nonAnchorWithNote = stops.filter(
+    (s) => !s.is_anchor && s.ai_note && s.ai_note.length > 20 && s.stop_type !== "transit"
+  );
+  const hiddenGem = nonAnchorWithNote.sort(
+    (a, b) => (b.ai_note || "").length - (a.ai_note || "").length
+  )[0];
+
+  // ── Find food stops ──
+  const foodStops = stops.filter((s) => s.stop_type === "food");
+
+  // ── Build day-by-day slides ──
+  for (let ci = 0; ci < cities.length; ci++) {
+    const city = cities[ci];
+    const nextCityStart = ci + 1 < cities.length ? cities[ci + 1].firstDayIndex : days.length;
+    const cityDays = days.slice(city.firstDayIndex, nextCityStart);
+
+    // City arrival slide (if multi-city)
+    if (multiCity) {
+      const arrivalLabel = ci === 0 ? "First stop" : ci === cities.length - 1 ? "Final destination" : "Next up";
+      const firstDayNarrative = cityDays[0]?.narrative || "";
+      slides.push({
+        layout: "center",
+        bg: getGradient(gradientIdx++),
+        label: arrivalLabel,
+        labelColor: "#D85A30",
+        headline: city.city,
+        body: firstDayNarrative || `${cityDays.length} day${cityDays.length > 1 ? "s" : ""} in ${city.city}.`,
+      });
+    }
+
+    // Anchor spotlight — show on first occurrence in this city
+    if (bestAnchor) {
+      const anchorDay = days.find((d) => d.id === bestAnchor.day_id);
+      const anchorDayIdx = days.indexOf(anchorDay!);
+      if (anchorDayIdx >= city.firstDayIndex && anchorDayIdx < nextCityStart) {
+        const pos = pickPosition(ANY_POSITIONS, lastCardPos);
+        lastCardPos = pos;
+        const dayColor = dayColors[anchorDayIdx] || "#1D9E75";
+        const desc = bestAnchor.description || "";
+        const note = bestAnchor.ai_note || "";
+        const combined = note ? `${desc} ${note}` : desc;
+        slides.push({
+          layout: "card",
+          bg: getGradient(gradientIdx++),
+          position: pos,
+          cardLabel: "Anchor spotlight",
+          cardLabelColor: "#1D9E75",
+          dayTitle: bestAnchor.name,
+          dayColor,
+          body: combined,
+          stops: [],
+        });
+      }
+    }
+
+    // Day overview slides
+    for (const day of cityDays) {
+      const dayIdx = days.indexOf(day);
+      const dayColor = dayColors[dayIdx] || "#1D9E75";
+      const dayStops = stops
+        .filter((s) => s.day_id === day.id && s.stop_type !== "transit")
+        .sort((a, b) => a.sort_order - b.sort_order);
+
+      // Skip if this day only had the anchor spotlight stop
+      if (dayStops.length === 0) continue;
+
+      // For long days, show top 5 stops (anchors first, then by order)
+      const displayStops = dayStops.length > 5
+        ? [
+            ...dayStops.filter((s) => s.is_anchor),
+            ...dayStops.filter((s) => !s.is_anchor),
+          ].slice(0, 5)
+        : dayStops;
+
+      // Check if this is a transit/gear-shift day
+      const hasTransit = stops.some(
+        (s) => s.day_id === day.id && s.stop_type === "transit"
+      );
+      const label = hasTransit
+        ? `Day ${day.day_number} — The gear shift`
+        : `Day ${day.day_number}`;
+
+      // Build narrative: merge narrative + reasoning into one voice
+      const narrative = day.narrative || "";
+      const reasoning = (day as Day & { reasoning?: string }).reasoning || "";
+      const body = reasoning && narrative
+        ? `${narrative} ${reasoning}`
+        : narrative || reasoning || "";
+
+      const pos = pickPosition(
+        displayStops.length >= 4 ? TOP_POSITIONS : ANY_POSITIONS,
+        lastCardPos
+      );
+      lastCardPos = pos;
+
+      slides.push({
+        layout: "card",
+        bg: getGradient(gradientIdx++),
+        position: pos,
+        cardLabel: label,
+        cardLabelColor: dayColor,
+        dayTitle: day.title || `Day ${day.day_number}`,
+        dayColor,
+        body,
+        stops: displayStops.map((s) => ({
+          name: s.name,
+          meta: `${s.stop_type} · ${s.duration_minutes} min`,
+          time: formatTime12(s.start_time),
+          isAnchor: !!s.is_anchor,
+          color: dayColor,
+        })),
+      });
+    }
+  }
+
+  // ── Food narrative (if 3+ food stops) ──
+  if (foodStops.length >= 3) {
+    const foodNames = foodStops.slice(0, 5).map((s) => s.name);
+    const foodBody =
+      foodStops.length >= 5
+        ? `Every food stop is chosen for where ${groupRef} will already be that day. ${foodNames.slice(0, 3).join(", ")} — each one picked because it's walkable from your main stops, not because it topped some list. And gelato basically every afternoon, because you're in ${trip.destination || "Europe"} and it's the law.`
+        : `I picked ${foodNames.join(" and ")} specifically for ${groupRef} — they're all walkable from whatever you're doing that day, and the kids can find something they'll actually eat at each one.`;
+
+    slides.push({
+      layout: "center",
+      bg: getGradient(gradientIdx++),
+      label: "How I'm feeding you",
+      labelColor: "#D85A30",
+      headline: "The food plan",
+      body: foodBody,
+    });
+  }
+
+  // ── Hidden gem ──
+  if (hiddenGem) {
+    slides.push({
+      layout: "center",
+      bg: getGradient(gradientIdx++),
+      label: "The one you'd miss",
+      labelColor: "#AFA9EC",
+      headline: hiddenGem.name,
+      body:
+        hiddenGem.ai_note ||
+        hiddenGem.description ||
+        "This one isn't in the guidebooks the way it should be.",
+    });
+  }
+
+  // ── Closer ──
+  slides.push({
+    layout: "center",
+    bg: "linear-gradient(135deg, #1a2a2a, #2a3a3a, #1a1a2a)",
+    label: "That's the shape of it",
+    labelColor: "#5DCAA5",
+    headline: "Ready to make it yours?",
+    body: "The anchored stops are locked. Everything else is yours to change — swap restaurants, add a detour, trim a packed day. Tell me what feels right and what doesn't.",
+    buttons: { primary: "Start planning" },
+  });
+
+  // ── Pad to minimum 8 slides if needed ──
+  // (For very short trips, the engine may produce fewer slides.
+  //  In practice, a 3-day trip with multi-city will already hit 8+.)
+
+  return slides;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ANCHOR ICON SVG
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AnchorSvg() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#0F6E56"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="5" r="3" />
+      <line x1="12" y1="8" x2="12" y2="21" />
+      <path d="M5 12H2a10 10 0 0 0 20 0h-3" />
+    </svg>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+export default function TripTour({
+  trip,
+  days,
+  stops,
+  dayColors,
+  onComplete,
+}: TripTourProps) {
+  const slides = useMemo(
+    () => buildSlides(trip, days, stops, dayColors),
+    [trip, days, stops, dayColors]
+  );
+
+  const [current, setCurrent] = useState(0);
+  const [cardVisible, setCardVisible] = useState(false);
+
+  const slide = slides[current];
+  const isFirst = current === 0;
+  const isLast = current === slides.length - 1;
+
+  const goNext = useCallback(() => {
+    if (current < slides.length - 1) {
+      setCardVisible(false);
+      setTimeout(() => setCurrent((c) => c + 1), 50);
+    }
+  }, [current, slides.length]);
+
+  const goPrev = useCallback(() => {
+    if (current > 0) {
+      setCardVisible(false);
+      setTimeout(() => setCurrent((c) => c - 1), 50);
+    }
+  }, [current]);
+
+  // Fade card in after slide change
+  useEffect(() => {
+    if (slide?.layout === "card") {
+      const timer = setTimeout(() => setCardVisible(true), 100);
+      return () => clearTimeout(timer);
+    }
+    setCardVisible(false);
+  }, [current, slide?.layout]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "ArrowRight" || e.key === " ") goNext();
+      if (e.key === "ArrowLeft") goPrev();
+      if (e.key === "Escape") onComplete();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [goNext, goPrev, onComplete]);
+
+  if (!slide) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        backgroundColor: "#111",
+        overflow: "hidden",
+      }}
+    >
+      {/* Backgrounds — all mounted, opacity-transitioned */}
+      {slides.map((s, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: s.bg,
+            opacity: i === current ? 1 : 0,
+            transition: "opacity 0.7s ease",
+          }}
+        />
+      ))}
+
+      {/* Center slides */}
+      {slides.map((s, i) =>
+        s.layout === "center" ? (
+          <div
+            key={`center-${i}`}
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              textAlign: "center",
+              padding: 40,
+              opacity: i === current ? 1 : 0,
+              transition: "opacity 0.5s ease",
+              pointerEvents: i === current ? "auto" : "none",
+              zIndex: 10,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 500,
+                color: s.labelColor,
+                textTransform: "uppercase",
+                letterSpacing: 1.5,
+                marginBottom: 16,
+              }}
+            >
+              {s.label}
+            </div>
+            <div
+              style={{
+                fontSize: 32,
+                fontWeight: 500,
+                color: "white",
+                lineHeight: 1.2,
+                marginBottom: 20,
+              }}
+            >
+              {s.headline}
+            </div>
+            <div
+              style={{
+                fontSize: 15,
+                color: "rgba(255,255,255,0.6)",
+                lineHeight: 1.7,
+                marginBottom: 36,
+                maxWidth: 460,
+              }}
+            >
+              {s.body}
+            </div>
+            {s.buttons && (
+              <div style={{ display: "flex", gap: 12 }}>
+                <button
+                  onClick={
+                    isLast
+                      ? onComplete
+                      : () => {
+                          setCardVisible(false);
+                          setTimeout(() => setCurrent(current + 1), 50);
+                        }
+                  }
+                  style={{
+                    padding: "13px 28px",
+                    borderRadius: 8,
+                    background: "#1D9E75",
+                    color: "white",
+                    fontSize: 14,
+                    fontWeight: 500,
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  {s.buttons.primary}
+                </button>
+                {s.buttons.secondary && (
+                  <button
+                    onClick={onComplete}
+                    style={{
+                      padding: "13px 28px",
+                      borderRadius: 8,
+                      background: "rgba(255,255,255,0.08)",
+                      color: "rgba(255,255,255,0.75)",
+                      fontSize: 14,
+                      fontWeight: 500,
+                      border: "0.5px solid rgba(255,255,255,0.15)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {s.buttons.secondary}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ) : null
+      )}
+
+      {/* Floating card (single element, repositioned per slide) */}
+      {slide.layout === "card" && (
+        <div
+          style={{
+            position: "absolute",
+            top: slide.position.top,
+            left: slide.position.left,
+            right: slide.position.right,
+            bottom: slide.position.bottom,
+            width: 380,
+            background: "rgba(255,255,255,0.96)",
+            borderRadius: 10,
+            backdropFilter: "blur(10px)",
+            zIndex: 10,
+            overflow: "hidden",
+            opacity: cardVisible ? 1 : 0,
+            transition:
+              "top 0.65s cubic-bezier(0.4,0,0.2,1), left 0.65s cubic-bezier(0.4,0,0.2,1), right 0.65s cubic-bezier(0.4,0,0.2,1), bottom 0.65s cubic-bezier(0.4,0,0.2,1), opacity 0.4s ease",
+          }}
+        >
+          {/* Card header */}
+          <div style={{ padding: "18px 20px 12px" }}>
+            <div
+              style={{
+                fontSize: 10,
+                fontWeight: 500,
+                color: slide.cardLabelColor,
+                textTransform: "uppercase",
+                letterSpacing: 0.8,
+                marginBottom: 4,
+              }}
+            >
+              {slide.cardLabel}
+            </div>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 500,
+                color: "#1a1a1a",
+                marginBottom: 10,
+              }}
+            >
+              {slide.dayTitle}
+            </div>
+            {slide.body && (
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "#666",
+                  lineHeight: 1.6,
+                  marginBottom: slide.stops.length > 0 ? 12 : 0,
+                }}
+              >
+                {slide.body}
+              </div>
+            )}
+          </div>
+
+          {/* Stop list */}
+          {slide.stops.length > 0 && (
+            <div style={{ padding: "0 20px 16px" }}>
+              {slide.stops.map((s, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "7px 0",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: s.isAnchor ? 6 : 3,
+                      height: 24,
+                      borderRadius: 2,
+                      background: s.color,
+                      opacity: s.isAnchor ? 1 : 0.25,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: "#1a1a1a",
+                      }}
+                    >
+                      {s.name}
+                    </div>
+                    <div style={{ fontSize: 10, color: "#999" }}>{s.meta}</div>
+                  </div>
+                  {s.time && (
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: "#bbb",
+                        whiteSpace: "nowrap",
+                        marginRight: 4,
+                      }}
+                    >
+                      {s.time}
+                    </div>
+                  )}
+                  {s.isAnchor && (
+                    <div style={{ flexShrink: 0 }}>
+                      <AnchorSvg />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Navigation arrows */}
+      {!isFirst && (
+        <button
+          onClick={goPrev}
+          style={{
+            position: "absolute",
+            left: 16,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            background: "rgba(0,0,0,0.2)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            zIndex: 30,
+            color: "white",
+            fontSize: 18,
+            border: "none",
+          }}
+        >
+          ‹
+        </button>
+      )}
+      {!isLast && (
+        <button
+          onClick={goNext}
+          style={{
+            position: "absolute",
+            right: 16,
+            top: "50%",
+            transform: "translateY(-50%)",
+            width: 44,
+            height: 44,
+            borderRadius: "50%",
+            background: "rgba(0,0,0,0.2)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            zIndex: 30,
+            color: "white",
+            fontSize: 18,
+            border: "none",
+          }}
+        >
+          ›
+        </button>
+      )}
+
+      {/* Counter */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 20,
+          right: 24,
+          fontSize: 11,
+          color: "rgba(255,255,255,0.4)",
+          zIndex: 20,
+          fontWeight: 500,
+        }}
+      >
+        {current + 1} / {slides.length}
+      </div>
+    </div>
+  );
+}
