@@ -105,6 +105,7 @@ export default function CuratingPage() {
   const [generatedDays, setGeneratedDays] = useState(0);
   const [phase, setPhase] = useState<"loading" | "cinematic" | "tour">("loading");
   const [generationDone, setGenerationDone] = useState(false);
+  const [firstChunkDone, setFirstChunkDone] = useState(false);
   const startedRef = useRef(false);
 
   useEffect(() => {
