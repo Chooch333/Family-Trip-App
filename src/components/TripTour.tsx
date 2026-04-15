@@ -51,6 +51,7 @@ interface TripTourProps {
   stops: Stop[];
   dayColors: string[];
   onComplete: () => void;
+  isPartial?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
