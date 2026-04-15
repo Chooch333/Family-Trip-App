@@ -64,7 +64,6 @@ export default function MapCinematic({ tripId, destination, refreshTrigger }: Ma
       if (cancelled || !containerRef.current) return;
 
       const maplibregl = (await import("maplibre-gl")).default;
-      await import("maplibre-gl/dist/maplibre-gl.css");
 
       if (cancelled || !containerRef.current) return;
 
