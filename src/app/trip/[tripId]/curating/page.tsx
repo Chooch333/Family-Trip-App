@@ -98,9 +98,9 @@ export default function CuratingPage() {
   const router = useRouter();
 
   // ── Fetch 2 Unsplash images for a slide ──
-  async function fetchSlideImages(query: string): Promise<string[]> {
+  async function fetchSlideImages(query: string, count = 4): Promise<string[]> {
     try {
-      const res = await fetch(`/api/unsplash/search?${new URLSearchParams({ query, count: "2" })}`);
+      const res = await fetch(`/api/unsplash/search?${new URLSearchParams({ query, count: String(count) })}`);
       if (!res.ok) return [];
       const data = await res.json();
       return (data.images || []).map((img: any) => img.url).filter(Boolean);
