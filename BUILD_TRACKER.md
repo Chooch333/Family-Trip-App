@@ -5,108 +5,77 @@
 
 ## COMPLETED
 
-- [x] **Competitive study** — Deep analysis of 6 travel planning apps (see resources below)
+- [x] **Competitive study** — Deep analysis of 6 travel planning apps
 - [x] **Product critique** — Codebase review and gap analysis against 3 targets
-- [x] **MCP fix: SHA passthrough** — get_file_contents now returns blob SHA
-- [x] **MCP fix: replace_in_file** — New tool for surgical edits to large files
+- [x] **MCP server upgrades** — SHA passthrough, replace_in_file tool
+- [x] **TARGET 1 — Claude's Voice & Personality** — Core system prompt rewrite, personality doc, voice calibration, contextual prompt chips, curating prompt redesign
+- [x] **TARGET 2 — Layout, Tour & Anchoring** — Overlapping card layout with independent expansion, trip tour slideshow (template engine, 8+ slide types, floating day cards), anchoring system (Claude sets/respects anchors), MapLibre cinematic loading, Supabase polling for progressive slide reveal, 2-day chunked generation
+
+### Recently shipped (this session):
+- [x] MapLibre GL JS vector map cinematic (replaced broken Leaflet raster approach)
+- [x] 2-day chunk generation (down from 3) for faster first content
+- [x] TripTour polls Supabase and grows slides as chunks land
+- [x] Tour launches after first chunk — generation continues behind slideshow
+- [x] Wrap-up slides (food, gem, closer) gated on generationComplete
+- [x] Target 3.1 partial — extracted tripHelpers.ts, SortableStopRow.tsx, Lightbox.tsx from page.tsx monolith
 
 ---
 
-## TARGET 1 — Claude's Voice & Personality ✅ COMPLETE
-*The real differentiator. Claude as a travel agent with taste, not an assistant returning data.*
+## IN PROGRESS
 
-- [x] **1.1 — Rewrite core system prompt as personality document**
-- [x] **1.2 — Kill generic prompt chips, replace with contextual opinionated ones**
-- [x] **1.3 — Split system prompt into two layers (personality + operational)**
-- [x] **1.4 — Redesign the curating prompt to generate voice, not just data**
-- [x] **1.5 — Make tool call responses feel like a person, not a system**
-- [x] **1.6 — Add voice calibration examples (4 GOOD/BAD pairs)**
-- [x] **1.7 — Update ITINERARY_SYSTEM_PROMPT in page.tsx (chat-based generation)**
+### Hype slides (next build)
+Three personality-driven slides that play before day-by-day content. Built from trip metadata (not curation data), so they render immediately. Claude explains its vision before revealing the itinerary.
+- [ ] **Destination showcase** — Claude paints the destination for this specific family
+- [ ] **Food philosophy** — How Claude is thinking about the eating experience
+- [ ] **Hidden gems preview** — Sets expectation this isn't a generic top-10 trip
+- See: `/mnt/user-data/outputs/handoff-hype-slides.md` for full build spec
 
----
-
-## TARGET 2 — Layout, Tour & Anchoring ✅ COMPLETE
-*Originally "Vibe → Day-View → Map as One Flow." Reframed after product decisions.*
-
-### Design decisions that shaped this target:
-- Vibe sessions and collab states (2.2-2.4 original) dissolved as formal concepts
-- Product principle: "opinionated first draft → react and refine" — Claude brings a strong take, the family reacts
-- The 3-column layout was correct — the fix was interaction wiring, not spatial repositioning
-- Anchoring replaced vibe_status as the concrete user-facing mechanism
-
-### Done:
-- [x] **2.1 — Dynamic resize overlapping card layout**
-  - Three cards overlap by ~18px at edges, click to focus
-  - Independent expansion: both side panels can expand simultaneously over chat
-  - Chat starts focused (z:3), click any card to bring it forward
-  - Smooth cubic-bezier transitions on all properties
-  - File: src/components/TripLayout.tsx
-
-- [x] **2.2 — Trip tour slideshow (story mode)**
-  - 8-10 slide minimum regardless of trip length
-  - Mixed slide types: opening pitch, city arrival, anchor spotlight, day overview, food narrative, gear shift, hidden gem, closer
-  - Template engine derives slides from curation data (no separate generation)
-  - Floating day card moves to content-aware positions per slide
-  - Arrow navigation + keyboard (arrows, escape)
-  - Gradient placeholders for future destination photos
-  - File: src/components/TripTour.tsx
-
-- [x] **2.3 — Tour wired into workspace**
-  - Renders as fixed overlay (z:9999) on top of workspace
-  - Workspace loads behind tour — instant transition on "Start planning"
-  - SessionStorage gate: tour shows once per trip per session
-  - "Dive in" skips to workspace, "Tour the trip" enters slideshow
-  - File: src/app/trip/[tripId]/page.tsx
-
-### Remaining:
-- [x] **2.4 — Anchoring: teach Claude about anchored stops**
-  - Updated claude.ts OPERATIONAL_RULES with anchoring behavior
-  - Claude never touches anchored stops when trimming
-  - Claude acknowledges anchors and proactively suggests anchoring
-  - Itinerary state now shows ⚓ ANCHORED marker for anchored stops
-
-- [x] **2.5 — Anchoring: Claude sets anchors during initial curation**
-  - Added is_anchor to JSON schema and StopData interface in curating prompt
-  - Claude instructed to anchor 1-3 stops per day it's most confident about
-  - is_anchor saved to Supabase during curation insert
-
-### Future optimizations (not blocking):
-- [x] Map cinematic animation during loading (pins drop as coordinates arrive)
-- [x] 75% completion threshold gate for progressive tour reveal
-- [x] Curation → map cinematic → tour seamless flow
-- [ ] Destination photography integration for tour slide backgrounds
+### "Co-Pilot" terminology removal
+- [ ] Remove "Co-Pilot" from all user-facing text across the project
+- [ ] Replace with "Claude" or first-person voice
 
 ---
 
 ## TARGET 3 — Day-View as the Cleanest Screen
 *Visual hierarchy discipline. Every element earns its pixels.*
 
-- [ ] **3.1 — Break the 64KB page.tsx into components**
-  - Extract: StopsPanel, ChatPanel, MapPanel, TripSplash, Lightbox, AccommodationCard, AddStopForm
-  - Prerequisite for iterating on visual hierarchy
+- [x] **3.1 — Break page.tsx into components** (partial)
+  - Done: tripHelpers.ts, SortableStopRow.tsx, Lightbox.tsx extracted
+  - Remaining: renderLeftPanel, renderChat, renderRightPanel still inline (close over ~30 state variables each — need prop interfaces to extract)
 
 - [ ] **3.2 — Fix visual hierarchy in stops panel**
-  - Day narrative vs stop name sizing, accommodation card rhythm, add-stop form placement
-  - Three things at a glance: what, when, where — everything else one tap deeper
+  - Day narrative (17px) vs stop name (18px) are competing — need clear hierarchy
+  - Accommodation card breaks stop list rhythm
+  - Add-stop form should be modal/slide-over, not wedged into the list
+  - Principle: three things at a glance (what, when, where), everything else one tap deeper
 
 - [ ] **3.3 — Polish stop card design**
-  - Wire up getStopBadge helper for type badges
-  - Refine SortableStopRow details
+  - Wire up getStopBadge helper for type badges (Food, Walking, Visit, Shopping)
+  - Refine SortableStopRow spacing, typography, anchor icon placement
 
 - [ ] **3.4 — Map panel polish**
-  - Accommodation pin differentiation, selected stop interaction refinement
+  - Accommodation pin visual differentiation
+  - Selected stop interaction refinement
+  - Consider migrating workspace map from Leaflet to MapLibre (consistency with cinematic)
 
 ---
 
-## BACKLOG (from competitive study)
+## BACKLOG
 
+### From competitive study
 - [ ] Real-time collaborative voting/polling for group decisions
 - [ ] Day-of re-planning based on weather/conditions
 - [ ] Cross-trip learning (personal travel intelligence)
 - [ ] Multi-currency budget tracking
 - [ ] Offline maps with full itinerary
 - [ ] Booking confirmation parsing beyond Gmail
-- [ ] Physical Travel Book product (future revenue)
+- [ ] Physical Travel Book product (Polarsteps-inspired, future revenue)
+
+### From this session
+- [ ] Destination photography integration for tour slide backgrounds
+- [ ] Workspace map migration from Leaflet to MapLibre GL
+- [ ] Tour slideshow mobile/swipe support
+- [ ] Auto-advance timing for slideshow (optional)
 
 ---
 
@@ -115,24 +84,27 @@
 ### Competitive study apps
 | App | URL | Key takeaway |
 |-----|-----|-------------|
-| Wanderlog | https://wanderlog.com | UX benchmark — map+itinerary co-view, best polish |
-| Polarsteps | https://polarsteps.com | Post-trip storytelling, Physical Travel Book product |
-| Stippl | https://stippl.io | Day-by-day organization, clean visual hierarchy |
-| Roadtrippers | https://roadtrippers.com | Route-based planning, driving focus |
-| Mindtrip.ai | https://mindtrip.ai | AI-native chat interface, closest to Co-Pilot concept |
-| TripNoted | https://tripnoted.com | Collaborative planning, group voting |
+| Wanderlog | https://wanderlog.com | UX benchmark — map+itinerary co-view, best polish in the space |
+| Polarsteps | https://polarsteps.com | Post-trip storytelling, Physical Travel Book product, trip tracking |
+| Stippl | https://stippl.io | Day-by-day organization, cleanest visual hierarchy of the group |
+| Roadtrippers | https://roadtrippers.com | Route-based planning, driving focus, along-the-way discovery |
+| Mindtrip.ai | https://mindtrip.ai | AI-native chat interface, closest competitor to our concept, MapLibre maps |
+| TripNoted | https://tripnoted.com | Collaborative planning, group voting, shared itineraries |
 
-### Positioning
-Co-Pilot's gap: nobody owns family-specific, vibe-first planning with an AI that has personality. "Take the day organization of Stippl, combine it with the AI interface of Mindtrip, give it the polish of Wanderlog, with collab/vibe as the backbone." The atomic unit is a feeling, and places are the output filtered through Claude's taste.
+### Product positioning
+Nobody owns family-specific, vibe-first planning with an AI that has personality. The gap: "Take the day organization of Stippl, combine it with the AI interface of Mindtrip, give it the polish of Wanderlog." The atomic unit is a feeling, and places are the output filtered through Claude's taste.
 
 ### Key files
 | File | Purpose |
 |------|---------|
-| src/lib/claude.ts | Co-Pilot personality, system prompt, tools, prompt chips |
-| src/app/trip/[tripId]/curating/page.tsx | Curation prompt, loading screen |
-| src/app/trip/[tripId]/page.tsx | Main workspace (64KB monolith — Target 3.1) |
-| src/components/TripLayout.tsx | Overlapping card layout |
-| src/components/TripTour.tsx | Story-mode slideshow |
-| src/components/MapCinematic.tsx | Animated pin-drop map during curation |
+| src/lib/claude.ts | Personality, system prompt, operational rules, tools, prompt chips |
+| src/lib/tripHelpers.ts | Shared helpers (generateDayColors, getStopBadge, formatTime12) |
+| src/app/trip/[tripId]/curating/page.tsx | Curation prompt, chunked generation, cinematic flow |
+| src/app/trip/[tripId]/page.tsx | Main workspace (~55KB after extractions — Target 3.1) |
+| src/components/TripLayout.tsx | Overlapping card layout with independent expansion |
+| src/components/TripTour.tsx | Story-mode slideshow — polls Supabase, grows slides |
+| src/components/MapCinematic.tsx | MapLibre GL cinematic map during curation |
+| src/components/SortableStopRow.tsx | Drag-and-drop stop row with anchor toggle |
+| src/components/Lightbox.tsx | Photo lightbox with keyboard nav |
 | src/components/DayBar.tsx | Day pill navigation |
 | src/components/AnchorIcon.tsx | Anchor toggle icon |
