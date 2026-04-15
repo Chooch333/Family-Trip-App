@@ -2,6 +2,17 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MapCinematic — MapLibre GL JS (vector tiles, WebGL)
+//
+// Why MapLibre instead of Leaflet:
+// Leaflet loads raster tiles (individual PNGs) that can stall/partially render.
+// MapLibre renders vector tiles via WebGL as one complete scene.
+// The `idle` event fires only when ALL tiles are rendered — no partial maps.
+//
+// Uses CartoDB Dark Matter (free, no API key) for the cinematic dark style.
+// ─────────────────────────────────────────────────────────────────────────────
+
 interface MapCinematicProps {
   tripId: string;
   destination: string;
@@ -10,89 +21,87 @@ interface MapCinematicProps {
 
 interface PinData {
   id: string;
-  name: string;
   latitude: number;
   longitude: number;
   dayColor: string;
 }
 
-export default function MapCinematic({ tripId, destination, refreshTrigger }: MapCinematicProps) {
-  const mapRef = useRef<HTMLDivElement>(null);
-  const leafletMap = useRef<any>(null);
-  const leafletLib = useRef<any>(null);
-  const markersRef = useRef<Map<string, any>>(new Map());
-  const [pins, setPins] = useState<PinData[]>([]);
-  const [tilesLoaded, setTilesLoaded] = useState(false);
-  const prevPinIds = useRef<Set<string>>(new Set());
-  const hasFitBounds = useRef(false);
+const DARK_STYLE = "https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json";
 
-  // Initialize map centered on destination
+export default function MapCinematic({ tripId, destination, refreshTrigger }: MapCinematicProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const markersRef = useRef<Map<string, any>>(new Map());
+  const [mapReady, setMapReady] = useState(false);
+  const [pins, setPins] = useState<PinData[]>([]);
+  const prevPinIds = useRef<Set<string>>(new Set());
+
+  // ── Initialize MapLibre map ──
   useEffect(() => {
-    if (!mapRef.current || leafletMap.current) return;
+    if (!containerRef.current || mapRef.current) return;
     let cancelled = false;
 
-    async function initMap() {
+    async function init() {
       // Geocode destination for initial center
-      let initLat = 42.5;
-      let initLng = 12.5;
-      let initZoom = 5;
+      let lng = 12.5;
+      let lat = 42.5;
+      let zoom = 4;
       if (destination && destination.trim()) {
         try {
           const res = await fetch(`/api/geocode?${new URLSearchParams({ q: destination.trim() })}`);
           if (res.ok) {
             const geo = await res.json();
             if (geo.latitude != null && geo.longitude != null) {
-              initLat = geo.latitude;
-              initLng = geo.longitude;
-              initZoom = 8;
+              lat = geo.latitude;
+              lng = geo.longitude;
+              zoom = 7;
             }
           }
-        } catch { /* use defaults */ }
+        } catch { /* defaults */ }
       }
 
-      if (cancelled || !mapRef.current) return;
+      if (cancelled || !containerRef.current) return;
 
-      const L = (await import("leaflet")).default;
-      leafletLib.current = L;
+      const maplibregl = (await import("maplibre-gl")).default;
+      await import("maplibre-gl/dist/maplibre-gl.css");
 
-      if (cancelled || !mapRef.current) return;
+      if (cancelled || !containerRef.current) return;
 
-      const map = L.map(mapRef.current, {
-        zoomControl: false,
+      const map = new maplibregl.Map({
+        container: containerRef.current,
+        style: DARK_STYLE,
+        center: [lng, lat],
+        zoom,
+        interactive: false,        // no pan/zoom/rotate
         attributionControl: false,
-        dragging: false,
-        scrollWheelZoom: false,
-        doubleClickZoom: false,
-        touchZoom: false,
-      }).setView([initLat, initLng], initZoom);
-
-      // Use Voyager (lighter, more readable) with CSS darkening for cinematic feel
-      const tileLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png", {
-        maxZoom: 18,
-      }).addTo(map);
-
-      // Wait for tiles to fully load before revealing
-      tileLayer.on("load", () => {
-        if (!cancelled) setTilesLoaded(true);
+        fadeDuration: 0,            // no tile fade — renders complete
       });
 
-      // Fallback: if tiles take too long, show after 4s anyway
-      setTimeout(() => {
-        if (!cancelled) setTilesLoaded(true);
-      }, 4000);
+      mapRef.current = map;
 
-      leafletMap.current = map;
+      // `idle` fires when all sources loaded AND all tiles rendered
+      map.once("idle", () => {
+        if (!cancelled) setMapReady(true);
+      });
+
+      // Safety fallback — if idle never fires (network issue), show after 6s
+      setTimeout(() => {
+        if (!cancelled) setMapReady(true);
+      }, 6000);
     }
 
-    initMap();
-    return () => { cancelled = true; };
+    init();
+    return () => {
+      cancelled = true;
+      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+    };
   }, [destination]);
 
-  // Fetch stops when refreshTrigger changes
+  // ── Fetch stops ──
   const fetchStops = useCallback(async () => {
     const { data: stops } = await supabase
       .from("stops")
-      .select("id, name, latitude, longitude, day_id")
+      .select("id, latitude, longitude, day_id")
       .eq("trip_id", tripId)
       .not("latitude", "is", null)
       .not("longitude", "is", null)
@@ -106,21 +115,18 @@ export default function MapCinematic({ tripId, destination, refreshTrigger }: Ma
       .eq("trip_id", tripId);
 
     const dayColorMap = new Map<string, string>();
-    if (days) {
-      for (const d of days) dayColorMap.set(d.id, d.color || "#1D9E75");
-    }
+    if (days) for (const d of days) dayColorMap.set(d.id, d.color || "#1D9E75");
 
     const newPins: PinData[] = stops
       .filter((s: any) => s.latitude && s.longitude)
       .map((s: any) => ({
         id: s.id,
-        name: s.name,
         latitude: s.latitude,
         longitude: s.longitude,
         dayColor: dayColorMap.get(s.day_id) || "#1D9E75",
       }));
 
-    prevPinIds.current = new Set(newPins.map((p) => p.id));
+    prevPinIds.current = new Set(newPins.map(p => p.id));
     setPins(newPins);
   }, [tripId]);
 
@@ -130,95 +136,80 @@ export default function MapCinematic({ tripId, destination, refreshTrigger }: Ma
     return () => clearInterval(interval);
   }, [fetchStops]);
 
-  // Render pins on the map
+  // ── Render pins as HTML markers ──
   useEffect(() => {
-    if (!tilesLoaded || !leafletMap.current || !leafletLib.current || pins.length === 0) return;
+    if (!mapReady || !mapRef.current || pins.length === 0) return;
 
-    const L = leafletLib.current;
-    const map = leafletMap.current;
+    // Dynamically import maplibre for Marker class
+    import("maplibre-gl").then(({ Marker, LngLatBounds }) => {
+      const map = mapRef.current;
+      if (!map) return;
 
-    // Add new markers with staggered animation
-    let delay = 0;
-    for (const pin of pins) {
-      if (markersRef.current.has(pin.id)) continue;
+      let newCount = 0;
+      for (const pin of pins) {
+        if (markersRef.current.has(pin.id)) continue;
+        newCount++;
 
-      const currentDelay = delay;
-      delay += 150; // 150ms stagger between pins
+        const el = document.createElement("div");
+        el.style.cssText = `
+          width: 12px; height: 12px; border-radius: 50%;
+          background: ${pin.dayColor};
+          border: 2px solid rgba(255,255,255,0.9);
+          box-shadow: 0 0 12px ${pin.dayColor}80;
+          opacity: 0; transform: scale(0);
+          animation: cinPin 0.5s cubic-bezier(0.34,1.56,0.64,1) ${newCount * 120}ms forwards;
+        `;
 
-      setTimeout(() => {
-        if (!leafletMap.current) return;
-        const icon = L.divIcon({
-          className: "cinematic-pin",
-          html: `<div style="
-            width: 14px; height: 14px; border-radius: 50%;
-            background: ${pin.dayColor};
-            border: 2.5px solid rgba(255,255,255,0.95);
-            box-shadow: 0 0 16px ${pin.dayColor}90, 0 2px 8px rgba(0,0,0,0.4);
-            animation: pinDrop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-            opacity: 0; transform: scale(0);
-          "></div>`,
-          iconSize: [14, 14],
-          iconAnchor: [7, 7],
-        });
-        const marker = L.marker([pin.latitude, pin.longitude], { icon }).addTo(map);
+        const marker = new Marker({ element: el })
+          .setLngLat([pin.longitude, pin.latitude])
+          .addTo(map);
         markersRef.current.set(pin.id, marker);
-      }, currentDelay);
-    }
-
-    // Fit bounds — only fly if we have new pins, debounce to avoid jitter
-    const allCoords = pins.map((p) => [p.latitude, p.longitude] as [number, number]);
-    if (allCoords.length > 0) {
-      const bounds = L.latLngBounds(allCoords);
-      if (!hasFitBounds.current) {
-        // First fit: fly to destination region
-        hasFitBounds.current = true;
-        map.flyToBounds(bounds, { padding: [80, 80], duration: 2, maxZoom: 12 });
-      } else {
-        // Subsequent: gentle adjust if bounds changed significantly
-        map.flyToBounds(bounds, { padding: [80, 80], duration: 1, maxZoom: 12 });
       }
-    }
-  }, [pins, tilesLoaded]);
 
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      if (leafletMap.current) { leafletMap.current.remove(); leafletMap.current = null; }
-    };
-  }, []);
+      // Fit bounds to all pins
+      if (pins.length >= 2) {
+        const bounds = new LngLatBounds();
+        for (const p of pins) bounds.extend([p.longitude, p.latitude]);
+        map.fitBounds(bounds, { padding: 80, maxZoom: 12, duration: 2000 });
+      } else if (pins.length === 1) {
+        map.flyTo({ center: [pins[0].longitude, pins[0].latitude], zoom: 11, duration: 2000 });
+      }
+    });
+  }, [pins, mapReady]);
 
   return (
-    <div style={{ position: "absolute", inset: 0, background: "#111" }}>
+    <div style={{ position: "absolute", inset: 0, background: "#0a0a0a" }}>
       <style>{`
-        @keyframes pinDrop {
+        @keyframes cinPin {
           0% { opacity: 0; transform: scale(0); }
-          60% { opacity: 1; transform: scale(1.2); }
+          60% { opacity: 1; transform: scale(1.3); }
           100% { opacity: 1; transform: scale(1); }
         }
-        .cinematic-pin { background: none !important; border: none !important; }
-        .leaflet-container { background: #111 !important; }
       `}</style>
+
+      {/* Map container — hidden until fully rendered */}
       <div
-        ref={mapRef}
+        ref={containerRef}
         style={{
           position: "absolute",
           inset: 0,
-          visibility: tilesLoaded ? "visible" : "hidden",
-          opacity: tilesLoaded ? 1 : 0,
+          visibility: mapReady ? "visible" : "hidden",
+          opacity: mapReady ? 1 : 0,
           transition: "opacity 1.5s ease",
-          filter: "brightness(0.55) saturate(0.7)",
         }}
       />
-      {/* Vignette overlay for cinematic depth */}
+
+      {/* Vignette overlay */}
       <div style={{
         position: "absolute", inset: 0, pointerEvents: "none", zIndex: 1,
         background: "radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.5) 100%)",
       }} />
+
       {/* Pin count */}
-      {pins.length > 0 && tilesLoaded && (
+      {pins.length > 0 && mapReady && (
         <div style={{
           position: "absolute", bottom: 24, left: 24, fontSize: 13,
-          color: "rgba(255,255,255,0.5)", zIndex: 2, fontWeight: 500,
+          color: "rgba(255,255,255,0.45)", zIndex: 2, fontWeight: 500,
         }}>
           {pins.length} stop{pins.length !== 1 ? "s" : ""} mapped
         </div>
