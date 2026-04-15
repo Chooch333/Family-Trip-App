@@ -152,10 +152,10 @@ export default function MapCinematic({ tripId, destination, refreshTrigger }: Ma
 
         const el = document.createElement("div");
         el.style.cssText = `
-          width: 12px; height: 12px; border-radius: 50%;
-          background: ${pin.dayColor};
-          border: 2px solid rgba(255,255,255,0.9);
-          box-shadow: 0 0 12px ${pin.dayColor}80;
+          width: 10px; height: 10px; border-radius: 50%;
+          background: rgba(200, 200, 195, 0.7);
+          border: 1.5px solid rgba(255,255,255,0.5);
+          box-shadow: 0 0 8px rgba(200,200,195,0.3);
           opacity: 0; transform: scale(0);
           animation: cinPin 0.5s cubic-bezier(0.34,1.56,0.64,1) ${newCount * 120}ms forwards;
         `;
@@ -166,13 +166,13 @@ export default function MapCinematic({ tripId, destination, refreshTrigger }: Ma
         markersRef.current.set(pin.id, marker);
       }
 
-      // Fit bounds to all pins
+      // Fit bounds to all pins — slow, cinematic zoom
       if (pins.length >= 2) {
         const bounds = new LngLatBounds();
         for (const p of pins) bounds.extend([p.longitude, p.latitude]);
-        map.fitBounds(bounds, { padding: 80, maxZoom: 12, duration: 2000 });
+        map.fitBounds(bounds, { padding: 80, maxZoom: 12, duration: 3500 });
       } else if (pins.length === 1) {
-        map.flyTo({ center: [pins[0].longitude, pins[0].latitude], zoom: 11, duration: 2000 });
+        map.flyTo({ center: [pins[0].longitude, pins[0].latitude], zoom: 11, duration: 3500 });
       }
     });
   }, [pins, mapReady]);
