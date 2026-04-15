@@ -295,26 +295,9 @@ export default function CuratingPage() {
     const timer = setTimeout(() => {
       if (tourLaunched.current) return;
       tourLaunched.current = true;
-      // Load whatever data exists so far from Supabase
-      (async () => {
-        const [tripRes, daysRes, stopsRes] = await Promise.all([
-          supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
-          supabase.from("days").select("*").eq("trip_id", tripId).order("day_number"),
-          supabase.from("stops").select("*").eq("trip_id", tripId).is("version_owner", null).order("sort_order"),
-        ]);
-        if (tripRes.data && daysRes.data && daysRes.data.length > 0 && stopsRes.data) {
-          const loadedDays = daysRes.data as Day[];
-          setTourData({
-            trip: tripRes.data as Trip,
-            days: loadedDays,
-            stops: stopsRes.data as Stop[],
-            dayColors: generateDayColors(loadedDays.length),
-          });
-          if (phaseRef.current === "cinematic") {
-            setPhase("tour");
-          }
-        }
-      })();
+      if (phaseRef.current === "cinematic") {
+        setPhase("tour");
+      }
     }, remaining);
 
     return () => clearTimeout(timer);
