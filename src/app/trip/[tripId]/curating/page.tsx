@@ -280,12 +280,10 @@ export default function CuratingPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Cinematic → tour when first chunk is done + minimum display time elapsed
-  // Minimum 6s on cinematic: map reveal (~2s) + zoom (3.5s) + brief pause
+  // Cinematic → tour after minimum display time
+  // Hype slides render from trip metadata immediately — no need to wait for generation
   useEffect(() => {
     if (phase !== "cinematic" || tourLaunched.current) return;
-    // Launch tour after first chunk (2 days) lands
-    if (generatedDays < 2) return;
 
     const elapsed = Date.now() - cinematicStartRef.current;
     const minDuration = 6000;
@@ -300,7 +298,7 @@ export default function CuratingPage() {
     }, remaining);
 
     return () => clearTimeout(timer);
-  }, [phase, generatedDays, tripId]);
+  }, [phase]);
 
   // Handle tour completion — always redirect, never go back
   function handleTourComplete() {
