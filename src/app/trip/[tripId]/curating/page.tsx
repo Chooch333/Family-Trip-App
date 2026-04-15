@@ -281,10 +281,14 @@ export default function CuratingPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Cinematic → tour after minimum display time
-  // Hype slides render from trip metadata immediately — no need to wait for generation
+  // Track when first chunk of days is ready (one-shot: false → true)
   useEffect(() => {
-    if (phase !== "cinematic" || tourLaunched.current) return;
+    if (generatedDays >= 2 && !firstChunkDone) setFirstChunkDone(true);
+  }, [generatedDays, firstChunkDone]);
+
+  // Cinematic → tour when first chunk is done + minimum cinematic display time
+  useEffect(() => {
+    if (phase !== "cinematic" || tourLaunched.current || !firstChunkDone) return;
 
     const elapsed = Date.now() - cinematicStartRef.current;
     const minDuration = 6000;
@@ -299,7 +303,7 @@ export default function CuratingPage() {
     }, remaining);
 
     return () => clearTimeout(timer);
-  }, [phase]);
+  }, [phase, firstChunkDone]);
 
   // Handle tour completion — always redirect, never go back
   function handleTourComplete() {
