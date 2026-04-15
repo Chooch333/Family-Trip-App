@@ -104,7 +104,6 @@ export default function CuratingPage() {
   const [totalDays, setTotalDays] = useState(0);
   const [generatedDays, setGeneratedDays] = useState(0);
   const [phase, setPhase] = useState<"loading" | "cinematic" | "tour">("loading");
-  const [tourData, setTourData] = useState<{ trip: Trip; days: Day[]; stops: Stop[]; dayColors: string[] } | null>(null);
   const [generationDone, setGenerationDone] = useState(false);
   const startedRef = useRef(false);
 
