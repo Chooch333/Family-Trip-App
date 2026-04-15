@@ -133,5 +133,6 @@ Co-Pilot's gap: nobody owns family-specific, vibe-first planning with an AI that
 | src/app/trip/[tripId]/page.tsx | Main workspace (64KB monolith — Target 3.1) |
 | src/components/TripLayout.tsx | Overlapping card layout |
 | src/components/TripTour.tsx | Story-mode slideshow |
+| src/components/MapCinematic.tsx | Animated pin-drop map during curation |
 | src/components/DayBar.tsx | Day pill navigation |
 | src/components/AnchorIcon.tsx | Anchor toggle icon |
