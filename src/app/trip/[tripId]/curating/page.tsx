@@ -327,14 +327,13 @@ export default function CuratingPage() {
     router.push(`/trip/${tripId}`);
   }
 
-  // If generation finishes while still on cinematic (no tour data yet), give it a moment
-  // This shouldn't happen with the above logic, but safety net
+  // If generation finishes and we're still on cinematic (edge case — tour never launched)
   useEffect(() => {
-    if (generationDone && phase === "cinematic" && !tourData) {
-      const timer = setTimeout(() => router.push(`/trip/${tripId}`), 3000);
+    if (generationDone && phase === "cinematic" && !tourLaunched.current) {
+      const timer = setTimeout(() => router.push(`/trip/${tripId}`), 2000);
       return () => clearTimeout(timer);
     }
-  }, [generationDone, phase, tourData, tripId, router]);
+  }, [generationDone, phase, tripId, router]);
   const progressSteps = [
     `Walking the streets of ${dest} in my head`,
     "Checking what's actually worth the hype",
