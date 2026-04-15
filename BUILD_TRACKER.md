@@ -1,15 +1,14 @@
 # Co-Pilot Trip Dashboard — Build Tracker
-### Last updated: April 14, 2026
+### Last updated: April 15, 2026
 
 ---
 
 ## COMPLETED
 
-- [x] **Competitive study** — Deep analysis of Wanderlog, Polarsteps, Stippl, Roadtrippers, Mindtrip, TripNoted
+- [x] **Competitive study** — Deep analysis of 6 travel planning apps (see resources below)
 - [x] **Product critique** — Codebase review and gap analysis against 3 targets
 - [x] **MCP fix: SHA passthrough** — get_file_contents now returns blob SHA
 - [x] **MCP fix: replace_in_file** — New tool for surgical edits to large files
-- [x] **Cleanup** — Delete src/lib/CLAUDE_REWRITE_INSTRUCTIONS.md
 
 ---
 
@@ -17,60 +16,64 @@
 *The real differentiator. Claude as a travel agent with taste, not an assistant returning data.*
 
 - [x] **1.1 — Rewrite core system prompt as personality document**
-  - CO_PILOT_PERSONALITY constant — character brief covering voice, relationship, situation handling
-  - Anchors every response regardless of trip, day, or tool call
-
 - [x] **1.2 — Kill generic prompt chips, replace with contextual opinionated ones**
-  - getPromptChips now accepts activeDay and activeDayStops
-  - Chips reference day title, stop count, accommodation, interests, group type
-
-- [x] **1.3 — Split system prompt into two layers**
-  - Layer 1: CO_PILOT_PERSONALITY (constant identity)
-  - Layer 2: OPERATIONAL_RULES (tool use, edge cases)
-  - buildSystemPrompt assembles 5 priority layers
-
+- [x] **1.3 — Split system prompt into two layers (personality + operational)**
 - [x] **1.4 — Redesign the curating prompt to generate voice, not just data**
-  - Rewrote curating/page.tsx system prompt with Co-Pilot personality
-  - Added FIELD VOICE GUIDE for trip_summary, narrative, reasoning, description, ai_note
-  - Loading screen copy now personality-aligned ("Walking the streets of X in my head")
-
 - [x] **1.5 — Make tool call responses feel like a person, not a system**
-  - Covered by OPERATIONAL_RULES in personality doc: "your text response should feel like a person explaining what they just did"
-  - executeToolCall return strings are internal only — Claude's text response is what users see
-  - Status: test and observe — if voice regresses around tool calls, add reinforcement
-
-- [x] **1.6 — Add voice calibration examples**
-  - Added 4 concrete GOOD/BAD example pairs to CO_PILOT_PERSONALITY
-  - Covers: restaurant recs, trimming a packed day, rain contingency, post-dinner suggestions
-  - Prevents regression to generic assistant register
-
-### Remaining note:
-- [ ] **1.7 — Update ITINERARY_SYSTEM_PROMPT in page.tsx (chat-based generation)**
-  - The prompt in page.tsx used when someone types a trip directly in chat (bypassing intake flow) still has the old generic voice
-  - Lower priority since most users go through intake → curating flow
-  - Use replace_in_file in a new chat session to update
+- [x] **1.6 — Add voice calibration examples (4 GOOD/BAD pairs)**
+- [x] **1.7 — Update ITINERARY_SYSTEM_PROMPT in page.tsx (chat-based generation)**
 
 ---
 
-## TARGET 2 — Vibe → Day-View → Map as One Flow
-*Chat drives everything. Vibe planning is the core, not a loading screen.*
+## TARGET 2 — Layout, Tour & Anchoring
+*Originally "Vibe → Day-View → Map as One Flow." Reframed after product decisions.*
 
-- [ ] **2.1 — Restructure TripLayout from 3-column peer to chat-as-command-bar**
-  - Current: stops | chat | map as equal columns
-  - Goal: stops + map on top, chat bar anchored at bottom
-  - Biggest architectural change in the app
+### Design decisions that shaped this target:
+- Vibe sessions and collab states (2.2-2.4 original) dissolved as formal concepts
+- Product principle: "opinionated first draft → react and refine" — Claude brings a strong take, the family reacts
+- The 3-column layout was correct — the fix was interaction wiring, not spatial repositioning
+- Anchoring replaced vibe_status as the concrete user-facing mechanism
 
-- [ ] **2.2 — Build interactive vibe planning environment**
-  - Current curating page is a one-shot loading screen
-  - Goal: interactive vibe conversation before itinerary materializes
-  - Schema supports it: days.vibe_status, days.reasoning, days.narrative
+### Done:
+- [x] **2.1 — Dynamic resize overlapping card layout**
+  - Three cards overlap by ~18px at edges, click to focus
+  - Independent expansion: both side panels can expand simultaneously over chat
+  - Chat starts focused (z:3), click any card to bring it forward
+  - Smooth cubic-bezier transitions on all properties
+  - File: src/components/TripLayout.tsx
 
-- [ ] **2.3 — Wire vibe → logistics pipeline as continuous flow**
-  - Vibe decisions cascade into day-view into map as one motion
+- [x] **2.2 — Trip tour slideshow (story mode)**
+  - 8-10 slide minimum regardless of trip length
+  - Mixed slide types: opening pitch, city arrival, anchor spotlight, day overview, food narrative, gear shift, hidden gem, closer
+  - Template engine derives slides from curation data (no separate generation)
+  - Floating day card moves to content-aware positions per slide
+  - Arrow navigation + keyboard (arrows, escape)
+  - Gradient placeholders for future destination photos
+  - File: src/components/TripTour.tsx
 
-- [ ] **2.4 — Day narrative should be interactive, not static**
-  - Currently static text in stops panel header
-  - Should be editable, Claude-refinable, connected to vibe status
+- [x] **2.3 — Tour wired into workspace**
+  - Renders as fixed overlay (z:9999) on top of workspace
+  - Workspace loads behind tour — instant transition on "Start planning"
+  - SessionStorage gate: tour shows once per trip per session
+  - "Dive in" skips to workspace, "Tour the trip" enters slideshow
+  - File: src/app/trip/[tripId]/page.tsx
+
+### Remaining:
+- [ ] **2.4 — Anchoring: teach Claude about anchored stops**
+  - Update claude.ts system prompt: never touch anchored stops when trimming
+  - Claude acknowledges anchors: "I kept the Colosseum locked in and rebuilt around it"
+  - Claude proactively suggests anchoring stops it's confident about
+
+- [ ] **2.5 — Anchoring: Claude sets anchors during initial curation**
+  - Update curating/page.tsx prompt to have Claude mark is_anchor on confident stops
+  - Update JSON schema in curation prompt to include is_anchor field
+  - Without this, tour slideshow anchor/flexible badges have no real data
+
+### Future optimizations (not blocking):
+- [ ] Map cinematic animation during loading (pins drop as coordinates arrive)
+- [ ] 75% completion threshold gate for progressive tour reveal
+- [ ] Destination photography integration for tour slide backgrounds
+- [ ] Curation → map cinematic → tour seamless flow
 
 ---
 
@@ -103,3 +106,31 @@
 - [ ] Offline maps with full itinerary
 - [ ] Booking confirmation parsing beyond Gmail
 - [ ] Physical Travel Book product (future revenue)
+
+---
+
+## RESOURCES
+
+### Competitive study apps
+| App | URL | Key takeaway |
+|-----|-----|-------------|
+| Wanderlog | https://wanderlog.com | UX benchmark — map+itinerary co-view, best polish |
+| Polarsteps | https://polarsteps.com | Post-trip storytelling, Physical Travel Book product |
+| Stippl | https://stippl.io | Day-by-day organization, clean visual hierarchy |
+| Roadtrippers | https://roadtrippers.com | Route-based planning, driving focus |
+| Mindtrip.ai | https://mindtrip.ai | AI-native chat interface, closest to Co-Pilot concept |
+| TripNoted | https://tripnoted.com | Collaborative planning, group voting |
+
+### Positioning
+Co-Pilot's gap: nobody owns family-specific, vibe-first planning with an AI that has personality. "Take the day organization of Stippl, combine it with the AI interface of Mindtrip, give it the polish of Wanderlog, with collab/vibe as the backbone." The atomic unit is a feeling, and places are the output filtered through Claude's taste.
+
+### Key files
+| File | Purpose |
+|------|---------|
+| src/lib/claude.ts | Co-Pilot personality, system prompt, tools, prompt chips |
+| src/app/trip/[tripId]/curating/page.tsx | Curation prompt, loading screen |
+| src/app/trip/[tripId]/page.tsx | Main workspace (64KB monolith — Target 3.1) |
+| src/components/TripLayout.tsx | Overlapping card layout |
+| src/components/TripTour.tsx | Story-mode slideshow |
+| src/components/DayBar.tsx | Day pill navigation |
+| src/components/AnchorIcon.tsx | Anchor toggle icon |
