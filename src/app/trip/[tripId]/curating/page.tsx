@@ -354,7 +354,7 @@ export default function CuratingPage() {
   if (phase === "cinematic") {
     return (
       <div className="h-screen relative" style={{ background: "#0a0a0a" }}>
-        <MapCinematic tripId={tripId} refreshTrigger={generatedDays} />
+        <MapCinematic tripId={tripId} destination={trip?.destination || trip?.name || ""} refreshTrigger={generatedDays} />
 
         {/* Floating progress overlay */}
         <div style={{
