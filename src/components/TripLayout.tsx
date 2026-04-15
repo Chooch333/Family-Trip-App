@@ -42,36 +42,16 @@ const BORDER_ACTIVE = "#d1d5db";
 const SHADOW_ACTIVE = "0 8px 32px rgba(0,0,0,0.12)";
 const PANEL_TRANSITION = "all 0.35s cubic-bezier(0.4, 0, 0.2, 1)";
 
-type FocusedPanel = "stops" | "chat" | "map";
-
-function getPanelStyles(focused: FocusedPanel, chatCollapsed: boolean) {
-  if (chatCollapsed) {
-    // Chat stays in place but drops behind; stops and map expand to 50/50 in front
-    return {
-      stops: { width: "calc(50% - 6px)", left: 12, right: "auto", zIndex: focused === "stops" ? 4 : 3 },
-      chat:  { width: "36%", left: "calc(33% - 18px)", right: "auto", zIndex: 0 },
-      map:   { width: "calc(50% - 6px)", left: "auto", right: 12, zIndex: focused === "map" ? 4 : 3 },
-    };
-  }
-  if (focused === "stops") {
-    return {
-      stops: { width: "45%", left: 12, right: "auto", zIndex: 3 },
-      chat:  { width: "32%", left: "calc(45% - 18px)", right: "auto", zIndex: 2 },
-      map:   { width: "30%", left: "auto", right: 12, zIndex: 1 },
-    };
-  }
-  if (focused === "map") {
-    return {
-      stops: { width: "30%", left: 12, right: "auto", zIndex: 1 },
-      chat:  { width: "32%", left: "calc(30% - 18px)", right: "auto", zIndex: 2 },
-      map:   { width: "45%", left: "auto", right: 12, zIndex: 3 },
-    };
-  }
-  // Default: chat focused
+function getPanelStyles(stopsFront: boolean, mapFront: boolean) {
   return {
-    stops: { width: "33%", left: 12, right: "auto", zIndex: 1 },
-    chat:  { width: "36%", left: "calc(33% - 18px)", right: "auto", zIndex: 3 },
-    map:   { width: "33%", left: "auto", right: 12, zIndex: 2 },
+    stops: stopsFront
+      ? { width: "calc(50% - 6px)", left: 12, right: "auto", zIndex: 3 }
+      : { width: "30%", left: 12, right: "auto", zIndex: 1 },
+    // Chat is a fixed backdrop — always centered, same size, behind the side cards
+    chat:  { width: "36%", left: "calc(33% - 18px)", right: "auto", zIndex: 2 },
+    map:   mapFront
+      ? { width: "calc(50% - 6px)", left: "auto", right: 12, zIndex: 3 }
+      : { width: "30%", left: "auto", right: 12, zIndex: 1 },
   };
 }
 
@@ -93,7 +73,8 @@ export default function TripLayout({
 }: TripLayoutProps) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [chatCollapsed, setChatCollapsed] = useState(false);
+  const [stopsFront, setStopsFront] = useState(false);
+  const [mapFront, setMapFront] = useState(false);
   const [avatarPopover, setAvatarPopover] = useState(false);
   const [switchUserMode, setSwitchUserMode] = useState(false);
   const [switchEmail, setSwitchEmail] = useState("");
@@ -101,9 +82,6 @@ export default function TripLayout({
   const [switchError, setSwitchError] = useState("");
   const popoverRef = useRef<HTMLDivElement>(null);
   const avatarBtnRef = useRef<HTMLButtonElement>(null);
-
-  // Overlapping card focus state — chat is default
-  const [focusedPanel, setFocusedPanel] = useState<FocusedPanel>("chat");
 
   // Close popover on outside click
   useEffect(() => {
@@ -144,7 +122,7 @@ export default function TripLayout({
 
   const activeDayColor = dayColors[activeDay] || "#1D9E75";
   const railTrips = (trips || []).slice(0, 4);
-  const panelStyles = getPanelStyles(focusedPanel, chatCollapsed);
+  const panelStyles = getPanelStyles(stopsFront, mapFront);
 
   function tripInitial(name: string): string {
     const trimmed = name.trim();
@@ -325,9 +303,9 @@ export default function TripLayout({
         {/* Body — overlapping card container */}
         <div className="flex-1 min-h-0 relative">
 
-          {/* Left panel — stops / day card */}
+          {/* Left panel — stops / day card (toggles over chat on click) */}
           <div
-            onClick={() => setFocusedPanel("stops")}
+            onClick={() => setStopsFront((v) => !v)}
             className="absolute flex flex-col overflow-y-auto"
             style={{
               top: 12,
@@ -338,18 +316,17 @@ export default function TripLayout({
               zIndex: panelStyles.stops.zIndex,
               transition: PANEL_TRANSITION,
               borderRadius: 10,
-              border: `0.5px solid ${focusedPanel === "stops" ? BORDER_ACTIVE : BORDER}`,
+              border: `0.5px solid ${stopsFront ? BORDER_ACTIVE : BORDER}`,
               backgroundColor: "white",
-              boxShadow: focusedPanel === "stops" ? SHADOW_ACTIVE : "none",
-              opacity: focusedPanel === "stops" ? 1 : 0.97,
+              boxShadow: stopsFront ? SHADOW_ACTIVE : "none",
+              opacity: stopsFront ? 1 : 0.97,
             }}
           >
             {renderLeftPanel()}
           </div>
 
-          {/* Center — chat */}
+          {/* Center — chat (fixed backdrop: same position and size always) */}
           <div
-            onClick={() => !chatCollapsed && setFocusedPanel("chat")}
             className="absolute flex flex-col min-h-0"
             style={{
               top: 12,
@@ -358,37 +335,19 @@ export default function TripLayout({
               right: panelStyles.chat.right,
               width: panelStyles.chat.width,
               zIndex: panelStyles.chat.zIndex,
-              transition: PANEL_TRANSITION,
               borderRadius: 10,
-              border: `0.5px solid ${!chatCollapsed && focusedPanel === "chat" ? BORDER_ACTIVE : BORDER}`,
+              border: `0.5px solid ${BORDER}`,
               backgroundColor: "white",
-              boxShadow: !chatCollapsed && focusedPanel === "chat" ? SHADOW_ACTIVE : "none",
-              opacity: chatCollapsed ? 1 : (focusedPanel === "chat" ? 1 : 0.97),
               overflow: "hidden",
-              pointerEvents: chatCollapsed ? "none" : "auto",
             }}
           >
-            {!chatCollapsed && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setChatCollapsed(true); }}
-                aria-label="Send chat to back"
-                title="Send chat to back"
-                className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-colors"
-                style={{ zIndex: 5 }}
-              >
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                  <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.4" fill="white" />
-                  <rect x="2.5" y="2.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.4" fill="white" />
-                </svg>
-              </button>
-            )}
             {renderChatOverlay && renderChatOverlay()}
             {renderChat()}
           </div>
 
-          {/* Right panel — map */}
+          {/* Right panel — map (toggles over chat on click) */}
           <div
-            onClick={() => setFocusedPanel("map")}
+            onClick={() => setMapFront((v) => !v)}
             className="absolute flex flex-col min-h-0"
             style={{
               top: 12,
@@ -399,39 +358,15 @@ export default function TripLayout({
               zIndex: panelStyles.map.zIndex,
               transition: PANEL_TRANSITION,
               borderRadius: 10,
-              border: `0.5px solid ${focusedPanel === "map" ? BORDER_ACTIVE : BORDER}`,
+              border: `0.5px solid ${mapFront ? BORDER_ACTIVE : BORDER}`,
               backgroundColor: "white",
-              boxShadow: focusedPanel === "map" ? SHADOW_ACTIVE : "none",
-              opacity: focusedPanel === "map" ? 1 : 0.97,
+              boxShadow: mapFront ? SHADOW_ACTIVE : "none",
+              opacity: mapFront ? 1 : 0.97,
               overflow: "hidden",
             }}
           >
             {renderRightPanel()}
           </div>
-
-          {/* Floating chat restore button */}
-          {chatCollapsed && (
-            <button
-              onClick={() => setChatCollapsed(false)}
-              aria-label="Restore chat"
-              className="absolute flex items-center justify-center text-white hover:scale-105 transition-transform"
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                backgroundColor: "#534AB7",
-                bottom: 20,
-                left: "50%",
-                transform: "translateX(-50%)",
-                zIndex: 18,
-                boxShadow: "0 4px 12px rgba(83,74,183,0.4)",
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-                <path d="M3 5a2 2 0 012-2h10a2 2 0 012 2v7a2 2 0 01-2 2H8l-4 3v-3H5a2 2 0 01-2-2V5z" fill="white" />
-              </svg>
-            </button>
-          )}
         </div>
       </div>
 
