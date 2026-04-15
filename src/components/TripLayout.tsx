@@ -20,16 +20,12 @@ interface TripLayoutProps {
   dayColors: string[];
   members?: TripMember[];
   stops?: Stop[];
-
   onSelectDay: (idx: number) => void;
   onAddDay?: () => void;
-
   trips?: Trip[];
   onNewTrip?: () => void;
   onSwitchTrip?: (id: string) => void;
-
   currentProfile?: CurrentProfile;
-
   renderLeftPanel: () => ReactNode;
   renderChat: () => ReactNode;
   renderRightPanel: () => ReactNode;
@@ -44,70 +40,60 @@ const SHADOW_RESTING = "0 2px 8px rgba(0,0,0,0.06)";
 const PANEL_TRANSITION = "all 0.35s cubic-bezier(0.4, 0, 0.2, 1)";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PANEL LAYOUT — Three overlapping cards with click-to-focus
+// PANEL LAYOUT — Three overlapping cards, independent expansion
 //
-// Only the focused card changes size. The non-focused side panel stays at
-// its resting width — it just changes z-index. This means when the map
-// expands, the day card holds steady (and vice versa).
+// Two independent booleans control width. One "focusedPanel" controls z-order.
+// Both side panels can be expanded simultaneously — they overlap the chat
+// from both sides and the chat peeks through in the middle.
 //
-// Chat focused (default):
-//   stops 33% z:1 | chat 36% z:3 | map 33% z:2
+// stopsExpanded=false, mapExpanded=false → both 33%, chat visible
+// stopsExpanded=true  → stops grows to 45%, overlaps chat more
+// mapExpanded=true    → map grows to 45%, overlaps chat more
+// Both expanded       → stops 45%, map 45%, chat still 36% in center
 //
-// Stops focused:
-//   stops 45% z:3 | chat 36% z:1 | map 33% z:2   ← map stays 33%
-//
-// Map focused:
-//   stops 33% z:2 | chat 36% z:1 | map 45% z:3   ← stops stays 33%
+// focusedPanel determines z-order only (who's on top of whom).
+// Click chat → collapse both side panels, chat comes to front.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type FocusedPanel = "stops" | "chat" | "map";
 
-function getPanelStyles(focused: FocusedPanel) {
-  const chatBase = { width: "36%", left: "32%", right: "auto" as const };
+function getPanelStyles(
+  focusedPanel: FocusedPanel,
+  stopsExpanded: boolean,
+  mapExpanded: boolean,
+) {
+  // Widths are independent of focus — controlled by expanded booleans
+  const stopsWidth = stopsExpanded ? "45%" : "33%";
+  const mapWidth = mapExpanded ? "45%" : "33%";
 
-  if (focused === "stops") {
-    return {
-      stops: { width: "45%", left: 12, right: "auto" as const, zIndex: 3 },
-      chat:  { ...chatBase, zIndex: 1 },
-      map:   { width: "33%", left: "auto" as const, right: 12, zIndex: 2 },
-    };
+  // Z-index: focused card is z:3, other side panel z:2, chat z:1
+  // When chat is focused: chat z:3, both side panels behind
+  let stopsZ: number, chatZ: number, mapZ: number;
+  if (focusedPanel === "chat") {
+    chatZ = 3; stopsZ = 1; mapZ = 2;
+  } else if (focusedPanel === "stops") {
+    stopsZ = 3; mapZ = 2; chatZ = 1;
+  } else {
+    mapZ = 3; stopsZ = 2; chatZ = 1;
   }
 
-  if (focused === "map") {
-    return {
-      stops: { width: "33%", left: 12, right: "auto" as const, zIndex: 2 },
-      chat:  { ...chatBase, zIndex: 1 },
-      map:   { width: "45%", left: "auto" as const, right: 12, zIndex: 3 },
-    };
-  }
-
-  // Chat focused (default)
   return {
-    stops: { width: "33%", left: 12, right: "auto" as const, zIndex: 1 },
-    chat:  { ...chatBase, zIndex: 3 },
-    map:   { width: "33%", left: "auto" as const, right: 12, zIndex: 2 },
+    stops: { width: stopsWidth, left: 12, right: "auto" as const, zIndex: stopsZ },
+    chat:  { width: "36%", left: "32%", right: "auto" as const, zIndex: chatZ },
+    map:   { width: mapWidth, left: "auto" as const, right: 12, zIndex: mapZ },
   };
 }
 
 export default function TripLayout({
-  trip,
-  days,
-  activeDay,
-  dayColors,
-  onSelectDay,
-  onAddDay,
-  trips,
-  onNewTrip,
-  onSwitchTrip,
-  currentProfile,
-  renderLeftPanel,
-  renderChat,
-  renderRightPanel,
-  renderChatOverlay,
+  trip, days, activeDay, dayColors, onSelectDay, onAddDay,
+  trips, onNewTrip, onSwitchTrip, currentProfile,
+  renderLeftPanel, renderChat, renderRightPanel, renderChatOverlay,
 }: TripLayoutProps) {
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [focusedPanel, setFocusedPanel] = useState<FocusedPanel>("chat");
+  const [stopsExpanded, setStopsExpanded] = useState(false);
+  const [mapExpanded, setMapExpanded] = useState(false);
   const [avatarPopover, setAvatarPopover] = useState(false);
   const [switchUserMode, setSwitchUserMode] = useState(false);
   const [switchEmail, setSwitchEmail] = useState("");
@@ -116,15 +102,38 @@ export default function TripLayout({
   const popoverRef = useRef<HTMLDivElement>(null);
   const avatarBtnRef = useRef<HTMLButtonElement>(null);
 
+  // Click handlers
+  function handleStopsClick() {
+    if (focusedPanel === "stops" && stopsExpanded) {
+      // Already focused+expanded → collapse, go back to chat
+      setStopsExpanded(false);
+      setFocusedPanel("chat");
+    } else {
+      setStopsExpanded(true);
+      setFocusedPanel("stops");
+    }
+  }
+  function handleMapClick() {
+    if (focusedPanel === "map" && mapExpanded) {
+      setMapExpanded(false);
+      setFocusedPanel("chat");
+    } else {
+      setMapExpanded(true);
+      setFocusedPanel("map");
+    }
+  }
+  function handleChatClick() {
+    // Chat click: collapse both side panels, bring chat to front
+    setStopsExpanded(false);
+    setMapExpanded(false);
+    setFocusedPanel("chat");
+  }
+
   useEffect(() => {
     if (!avatarPopover) return;
     function handleClick(e: MouseEvent) {
       if (popoverRef.current && !popoverRef.current.contains(e.target as Node) && avatarBtnRef.current && !avatarBtnRef.current.contains(e.target as Node)) {
-        setAvatarPopover(false);
-        setSwitchUserMode(false);
-        setSwitchEmail("");
-        setSwitchSuggestions([]);
-        setSwitchError("");
+        setAvatarPopover(false); setSwitchUserMode(false); setSwitchEmail(""); setSwitchSuggestions([]); setSwitchError("");
       }
     }
     document.addEventListener("mousedown", handleClick);
@@ -144,14 +153,12 @@ export default function TripLayout({
   async function handleSwitchToProfile(profileId: string) {
     const { data: member } = await supabase.from("trip_members").select("id").eq("trip_id", trip.id).eq("profile_id", currentProfile?.id || "").maybeSingle();
     if (member) { await supabase.from("trip_members").update({ profile_id: profileId }).eq("id", member.id); }
-    setAvatarPopover(false);
-    setSwitchUserMode(false);
-    window.location.reload();
+    setAvatarPopover(false); setSwitchUserMode(false); window.location.reload();
   }
 
   const activeDayColor = dayColors[activeDay] || "#1D9E75";
   const railTrips = (trips || []).slice(0, 4);
-  const panelStyles = getPanelStyles(focusedPanel);
+  const panelStyles = getPanelStyles(focusedPanel, stopsExpanded, mapExpanded);
   const stopsIsFocused = focusedPanel === "stops";
   const chatIsFocused = focusedPanel === "chat";
   const mapIsFocused = focusedPanel === "map";
@@ -263,8 +270,7 @@ export default function TripLayout({
         {/* Overlapping card container */}
         <div className="flex-1 min-h-0 relative">
           {/* LEFT — Day card */}
-          <div onClick={() => setFocusedPanel("stops")}
-            className="absolute flex flex-col overflow-y-auto"
+          <div onClick={handleStopsClick} className="absolute flex flex-col overflow-y-auto"
             style={{ top: 12, bottom: 12, left: panelStyles.stops.left, width: panelStyles.stops.width, zIndex: panelStyles.stops.zIndex,
               transition: PANEL_TRANSITION, borderRadius: 10, border: `0.5px solid ${stopsIsFocused ? BORDER_ACTIVE : BORDER}`,
               backgroundColor: "white", boxShadow: stopsIsFocused ? SHADOW_ACTIVE : SHADOW_RESTING, cursor: "pointer" }}>
@@ -272,8 +278,7 @@ export default function TripLayout({
           </div>
 
           {/* CENTER — Chat */}
-          <div onClick={() => setFocusedPanel("chat")}
-            className="absolute flex flex-col min-h-0"
+          <div onClick={handleChatClick} className="absolute flex flex-col min-h-0"
             style={{ top: 12, bottom: 12, left: panelStyles.chat.left, width: panelStyles.chat.width, zIndex: panelStyles.chat.zIndex,
               transition: PANEL_TRANSITION, borderRadius: 10, border: `0.5px solid ${chatIsFocused ? BORDER_ACTIVE : BORDER}`,
               backgroundColor: "white", boxShadow: chatIsFocused ? SHADOW_ACTIVE : "none", overflow: "hidden", cursor: "pointer" }}>
@@ -282,8 +287,7 @@ export default function TripLayout({
           </div>
 
           {/* RIGHT — Map */}
-          <div onClick={() => setFocusedPanel("map")}
-            className="absolute flex flex-col min-h-0"
+          <div onClick={handleMapClick} className="absolute flex flex-col min-h-0"
             style={{ top: 12, bottom: 12, right: panelStyles.map.right, width: panelStyles.map.width, zIndex: panelStyles.map.zIndex,
               transition: PANEL_TRANSITION, borderRadius: 10, border: `0.5px solid ${mapIsFocused ? BORDER_ACTIVE : BORDER}`,
               backgroundColor: "white", boxShadow: mapIsFocused ? SHADOW_ACTIVE : SHADOW_RESTING, overflow: "hidden", cursor: "pointer" }}>
