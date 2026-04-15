@@ -36,17 +36,19 @@ export default function MapCinematic({ tripId, destination, refreshTrigger }: Ma
       let initLat = 42.5;
       let initLng = 12.5;
       let initZoom = 5;
-      try {
-        const res = await fetch(`/api/geocode?${new URLSearchParams({ q: destination })}`);
-        if (res.ok) {
-          const geo = await res.json();
-          if (geo.latitude != null && geo.longitude != null) {
-            initLat = geo.latitude;
-            initLng = geo.longitude;
-            initZoom = 8;
+      if (destination && destination.trim()) {
+        try {
+          const res = await fetch(`/api/geocode?${new URLSearchParams({ q: destination.trim() })}`);
+          if (res.ok) {
+            const geo = await res.json();
+            if (geo.latitude != null && geo.longitude != null) {
+              initLat = geo.latitude;
+              initLng = geo.longitude;
+              initZoom = 8;
+            }
           }
-        }
-      } catch { /* use defaults */ }
+        } catch { /* use defaults */ }
+      }
 
       if (cancelled || !mapRef.current) return;
 
