@@ -698,9 +698,9 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
         // Show trip summary splash once per session
         const t = tripRes.data as Trip & { trip_summary?: string | null };
         if (t.trip_summary && typeof window !== "undefined") {
-          const key = `splash_seen_${tripId}`;
+          const key = `tour_seen_${tripId}`;
           if (!sessionStorage.getItem(key)) {
-            setShowTripSplash(true);
+            setShowTripTour(true);
             sessionStorage.setItem(key, "1");
           }
         }
