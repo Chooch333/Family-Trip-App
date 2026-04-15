@@ -1148,11 +1148,10 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
       {/* Trip tour slideshow overlay */}
       {showTripTour && days.length > 0 && stops.length > 0 && (
         <TripTour
+          tripId={tripId}
           trip={trip}
-          days={days}
-          stops={stops}
-          dayColors={dayColors}
           onComplete={() => setShowTripTour(false)}
+          generationComplete={true}
         />
       )}
 
