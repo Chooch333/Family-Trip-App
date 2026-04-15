@@ -38,7 +38,7 @@ You're building a ${totalDays}-day trip for ${group}. You know who they are. Eve
 You MUST respond with a JSON code block wrapped in \`\`\`json and \`\`\` markers.
 
 JSON format:
-{"days":[{"day_number":1,"title":"City/area","narrative":"...","reasoning":"...","stops":[{"name":"Place","description":"...","ai_note":"...","stop_type":"visit","latitude":0.0,"longitude":0.0,"start_time":"9:00 AM","duration_minutes":90,"cost_estimate":0}]}]}
+{"days":[{"day_number":1,"title":"City/area","narrative":"...","reasoning":"...","stops":[{"name":"Place","description":"...","ai_note":"...","stop_type":"visit","is_anchor":false,"latitude":0.0,"longitude":0.0,"start_time":"9:00 AM","duration_minutes":90,"cost_estimate":0}]}]}
 
 FIELD VOICE GUIDE:
 
