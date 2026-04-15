@@ -292,6 +292,41 @@ function buildDaySlides(
   });
   gradientIdx++;
 
+  // ── Hype slides — personality-driven, render from trip metadata immediately ──
+
+  // Destination showcase
+  const destHeadline = trip.destination || trip.name;
+  slides.push({
+    layout: "center", key: "hype-destination",
+    bg: "linear-gradient(160deg, #1a3a4a 0%, #0a2a3a 50%, #2a4a5a 100%)",
+    label: "THE DESTINATION", labelColor: "#5DCAA5",
+    headline: destHeadline,
+    body: buildDestinationHype(trip),
+  });
+  gradientIdx++;
+
+  // Food philosophy
+  slides.push({
+    layout: "center", key: "hype-food",
+    bg: "linear-gradient(135deg, #3a1a0a 0%, #6a3a1a 50%, #4a2a10 100%)",
+    label: "THE FOOD PHILOSOPHY", labelColor: "#D85A30",
+    headline: "Here's how I'm thinking about food.",
+    body: buildFoodHype(trip),
+  });
+  gradientIdx++;
+
+  // Hidden gems preview
+  slides.push({
+    layout: "center", key: "hype-gems",
+    bg: "linear-gradient(160deg, #2a1a3a 0%, #3a2a4a 50%, #1a1a2a 100%)",
+    label: "HIDDEN GEMS", labelColor: "#AFA9EC",
+    headline: "I'm going to show you things most people walk right past.",
+    body: buildGemsHype(trip),
+  });
+  gradientIdx++;
+
+  // ── City & day slides — grow as chunks land from Supabase ──
+
   const cities = getDistinctCities(days);
   const multiCity = cities.length >= 2;
 
