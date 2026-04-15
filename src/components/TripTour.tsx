@@ -218,7 +218,7 @@ function SlideBackground({ images, fallbackGradient, active }: { images?: string
   const [imgIdx, setImgIdx] = useState(0);
   useEffect(() => {
     if (!active || !images || images.length < 2) return;
-    const timer = setInterval(() => setImgIdx(prev => (prev + 1) % images.length), 7000);
+    const timer = setInterval(() => setImgIdx(prev => (prev + 1) % images.length), 3000);
     return () => clearInterval(timer);
   }, [active, images]);
   useEffect(() => { if (active) setImgIdx(0); }, [active]);
