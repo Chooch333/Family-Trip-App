@@ -337,37 +337,92 @@ export default function CuratingPage() {
 
   const progressPct = totalDays > 0 ? Math.min(100, (generatedDays / totalDays) * 100) : 0;
 
-  return (
-    <div className="h-screen flex items-center justify-center bg-white">
-      <div className="text-center max-w-sm mx-auto px-4">
-        <div className="w-12 h-12 rounded-full border-[3px] border-gray-200 border-t-emerald-500 animate-spin mx-auto mb-6" />
-        <p className="text-[18px] font-semibold text-gray-900 mb-2">Your Co-Pilot is building your trip</p>
-        <p className="text-[13px] text-gray-500 mb-3">
-          Putting together {dest}{trip?.travel_dates ? ` for ${trip.travel_dates}` : ""} — this takes a minute because I&apos;m being picky.
-        </p>
-        {totalDays > 0 && (
-          <>
-            <p className="text-[13px] text-gray-500 mb-2">
-              Building days {generatedDays} of {totalDays}...
-            </p>
-            <div className="w-full h-[3px] bg-gray-100 rounded-full overflow-hidden mb-6">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${progressPct}%`, backgroundColor: "#1D9E75" }}
-              />
-            </div>
-          </>
-        )}
-        <div className="flex flex-col gap-2.5 text-left">
-          {progressSteps.map((step, i) => (
-            <div key={step} className="flex items-center gap-2.5 text-[13px] animate-fade-in" style={{ animationDelay: `${i * 1.2}s`, animationFillMode: "backwards" }}>
-              <svg className="w-4 h-4 text-emerald-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              <span className="text-gray-700">{step}</span>
+  // ── PHASE: TOUR ──
+  if (phase === "tour" && tourData) {
+    return (
+      <TripTour
+        trip={tourData.trip}
+        days={tourData.days}
+        stops={tourData.stops}
+        dayColors={tourData.dayColors}
+        onComplete={handleTourComplete}
+      />
+    );
+  }
+
+  // ── PHASE: CINEMATIC ──
+  if (phase === "cinematic") {
+    return (
+      <div className="h-screen relative" style={{ background: "#0a0a0a" }}>
+        <MapCinematic tripId={tripId} refreshTrigger={generatedDays} />
+
+        {/* Floating progress overlay */}
+        <div style={{
+          position: "absolute", top: 24, left: "50%", transform: "translateX(-50%)",
+          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)",
+          borderRadius: 10, padding: "14px 24px", zIndex: 10,
+          textAlign: "center", minWidth: 260,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 500, color: "rgba(255,255,255,0.8)", marginBottom: 6 }}>
+            Your Co-Pilot is building your trip
+          </div>
+          {totalDays > 0 && (
+            <>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 6 }}>
+                Day {generatedDays} of {totalDays}
+              </div>
+              <div style={{ width: "100%", height: 3, background: "rgba(255,255,255,0.1)", borderRadius: 2, overflow: "hidden" }}>
+                <div style={{ height: "100%", borderRadius: 2, background: "#1D9E75", transition: "width 0.5s ease", width: `${progressPct}%` }} />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Floating Co-Pilot status messages */}
+        <div style={{
+          position: "absolute", bottom: 24, right: 24, zIndex: 10,
+          display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end",
+        }}>
+          {progressSteps.slice(0, Math.min(progressSteps.length, Math.floor(generatedDays / (totalDays / progressSteps.length || 1)) + 1)).map((step, i) => (
+            <div key={step} style={{
+              fontSize: 12, color: "rgba(255,255,255,0.35)", fontWeight: 500,
+              animation: "fadeIn 0.5s ease forwards",
+              animationDelay: `${i * 0.3}s`,
+              opacity: 0,
+            }}>
+              {step}
             </div>
           ))}
         </div>
+
+        <style>{`
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // ── PHASE: LOADING (initial + post-tour finishing) ──
+  return (
+    <div className="h-screen flex items-center justify-center" style={{ background: "#0a0a0a" }}>
+      <div className="text-center max-w-sm mx-auto px-4">
+        <div className="w-12 h-12 rounded-full border-[3px] border-gray-700 border-t-emerald-500 animate-spin mx-auto mb-6" />
+        <p style={{ fontSize: 18, fontWeight: 600, color: "white", marginBottom: 8 }}>
+          {tourData ? "Finishing up..." : "Your Co-Pilot is building your trip"}
+        </p>
+        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginBottom: 16 }}>
+          {tourData
+            ? "Just a few more seconds."
+            : `Putting together ${dest}${trip?.travel_dates ? ` for ${trip.travel_dates}` : ""}`}
+        </p>
+        {totalDays > 0 && !tourData && (
+          <div style={{ width: "100%", height: 3, background: "rgba(255,255,255,0.1)", borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ height: "100%", borderRadius: 2, background: "#1D9E75", transition: "width 0.5s ease", width: `${progressPct}%` }} />
+          </div>
+        )}
       </div>
     </div>
   );
