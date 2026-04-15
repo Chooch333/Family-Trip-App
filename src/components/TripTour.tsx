@@ -448,7 +448,7 @@ export default function TripTour({ tripId, trip, onComplete, generationComplete 
     <div style={{ position: "fixed", inset: 0, zIndex: 9999, backgroundColor: "#111", overflow: "hidden" }}>
       {slides.map((s, i) => (
         <div key={s.key} style={{ position: "absolute", inset: 0, opacity: i === current ? 1 : 0, transition: "opacity 0.7s ease", pointerEvents: "none" }}>
-          <SlideBackground images={s.images} fallbackGradient={s.bg} active={i === current} />
+          <SlideBackground images={s.images} active={i === current} />
         </div>
       ))}
       {slides.map((s, i) => s.layout === "center" ? (
