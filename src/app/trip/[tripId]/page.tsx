@@ -28,28 +28,6 @@ interface TripSwitcherItem {
   role: "organizer" | "member";
 }
 
-// --- Dynamic color gradient: forest green → teal → cyan → blue → indigo → purple/rose ---
-function generateDayColors(count: number): string[] {
-  if (count <= 0) return [];
-  if (count === 1) return ["hsl(145, 55%, 33%)"];
-  const hueStops = [145, 165, 180, 195, 220, 250, 280, 310];
-  const satStops = [55, 60, 55, 50, 55, 50, 50, 45];
-  const litStops = [33, 38, 40, 42, 42, 40, 38, 38];
-  const colors: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = i / (count - 1);
-    const idx = t * (hueStops.length - 1);
-    const lo = Math.floor(idx);
-    const hi = Math.min(lo + 1, hueStops.length - 1);
-    const frac = idx - lo;
-    const h = hueStops[lo] + (hueStops[hi] - hueStops[lo]) * frac;
-    const s = satStops[lo] + (satStops[hi] - satStops[lo]) * frac;
-    const l = litStops[lo] + (litStops[hi] - litStops[lo]) * frac;
-    colors.push(`hsl(${Math.round(h)}, ${Math.round(s)}%, ${Math.round(l)}%)`);
-  }
-  return colors;
-}
-
 // --- Stop type badge helper ---
 function getStopBadge(stop: Stop): { label: string; bg: string; text: string } | null {
   const name = stop.name.toLowerCase();
