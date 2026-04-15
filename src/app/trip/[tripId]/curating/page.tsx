@@ -261,60 +261,59 @@ export default function CuratingPage() {
 
   const dest = trip?.destination || "your destination";
 
-  // Phase transitions
+  // Phase transitions — STRICTLY ONE-DIRECTIONAL
+  // loading → cinematic → tour → workspace (never backwards)
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
+
   // Loading → cinematic after brief delay
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (phase === "loading") setPhase("cinematic");
+      if (phaseRef.current === "loading") setPhase("cinematic");
     }, 2000);
     return () => clearTimeout(timer);
-  }, [phase]);
+  }, []);
 
-  // Cinematic → tour at 75% threshold
+  // Cinematic → tour when BOTH conditions met:
+  //   1. At least 75% of days generated
+  //   2. Generation is fully done (trip_summary written)
   useEffect(() => {
-    if (phase !== "cinematic" || totalDays === 0) return;
-    const threshold = Math.ceil(totalDays * 0.75);
-    if (generatedDays >= threshold) {
-      // Load current data from Supabase for the tour
-      (async () => {
-        const [tripRes, daysRes, stopsRes] = await Promise.all([
-          supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
-          supabase.from("days").select("*").eq("trip_id", tripId).order("day_number"),
-          supabase.from("stops").select("*").eq("trip_id", tripId).is("version_owner", null).order("sort_order"),
-        ]);
-        if (tripRes.data && daysRes.data && stopsRes.data) {
-          const loadedDays = daysRes.data as Day[];
-          setTourData({
-            trip: tripRes.data as Trip,
-            days: loadedDays,
-            stops: stopsRes.data as Stop[],
-            dayColors: generateDayColors(loadedDays.length),
-          });
+    if (phase !== "cinematic" || !generationDone) return;
+    // Load final data from Supabase for the tour
+    (async () => {
+      const [tripRes, daysRes, stopsRes] = await Promise.all([
+        supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
+        supabase.from("days").select("*").eq("trip_id", tripId).order("day_number"),
+        supabase.from("stops").select("*").eq("trip_id", tripId).is("version_owner", null).order("sort_order"),
+      ]);
+      if (tripRes.data && daysRes.data && stopsRes.data) {
+        const loadedDays = daysRes.data as Day[];
+        setTourData({
+          trip: tripRes.data as Trip,
+          days: loadedDays,
+          stops: stopsRes.data as Stop[],
+          dayColors: generateDayColors(loadedDays.length),
+        });
+        if (phaseRef.current === "cinematic") {
           setPhase("tour");
         }
-      })();
-    }
-  }, [phase, generatedDays, totalDays, tripId]);
+      }
+    })();
+  }, [phase, generationDone, tripId]);
 
-  // Handle tour completion
+  // Handle tour completion — always redirect, never go back
   function handleTourComplete() {
-    // Set sessionStorage flag so workspace doesn't show tour again
     if (typeof window !== "undefined") {
       sessionStorage.setItem(`tour_seen_${tripId}`, "1");
     }
-    if (generationDone) {
-      router.push(`/trip/${tripId}`);
-    } else {
-      // Generation still running — show brief finishing state then redirect
-      setPhase("loading");
-    }
+    router.push(`/trip/${tripId}`);
   }
 
-  // When generation finishes and we're in loading (post-tour waiting), redirect
+  // If generation finishes while still on cinematic (no tour data yet), give it a moment
+  // This shouldn't happen with the above logic, but safety net
   useEffect(() => {
-    if (generationDone && phase === "loading" && tourData) {
-      // Small delay so the user sees "finishing" message
-      const timer = setTimeout(() => router.push(`/trip/${tripId}`), 1500);
+    if (generationDone && phase === "cinematic" && !tourData) {
+      const timer = setTimeout(() => router.push(`/trip/${tripId}`), 3000);
       return () => clearTimeout(timer);
     }
   }, [generationDone, phase, tourData, tripId, router]);
