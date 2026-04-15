@@ -58,6 +58,7 @@ STRUCTURAL RULES:
 - 12-hour AM/PM times (e.g. "9:00 AM", "2:30 PM")
 - Include food stops for meals — and have opinions about them
 - Every stop needs a description AND an ai_note
+- Every stop needs an is_anchor boolean: true for the 1-3 stops per day you're most confident about — the non-negotiables, the reason that day exists. These are stops you'd fight to keep if the day got trimmed. Set false for everything else (flexible — good pick but open to swapping).
 - Every day needs a narrative AND a reasoning field
 ${trip.travel_dates ? `- Travel dates: ${trip.travel_dates}. Factor in weather, seasonal closures, holidays, local events, and what the destination actually feels like at that time of year.` : ""}`;
 }
