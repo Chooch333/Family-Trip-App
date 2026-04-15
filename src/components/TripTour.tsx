@@ -432,14 +432,15 @@ function buildWrapUpSlides(trip: Trip, stops: Stop[]): Slide[] {
     });
   }
 
-  // Closer
+  // Closer — the pitch card with trip summary
+  const tripSummary = (trip as Trip & { trip_summary?: string }).trip_summary ||
+    `That's the shape of what I've built for ${groupRef} in ${trip.destination || trip.name}. The anchored stops are locked — everything else is yours to change.`;
   slides.push({
     layout: "center", key: "closer",
-    bg: "linear-gradient(135deg, #1a2a2a, #2a3a3a, #1a1a2a)",
-    label: "That's the shape of it", labelColor: "#5DCAA5",
-    headline: "Ready to make it yours?",
-    body: "The anchored stops are locked. Everything else is yours to change — swap restaurants, add a detour, trim a packed day. Tell me what feels right and what doesn't.",
-    buttons: { primary: "Start planning" },
+    bg: "linear-gradient(135deg, #1a2a1a 0%, #0a1a0a 50%, #2a1a0a 100%)",
+    label: "Claude built you a trip", labelColor: "#5DCAA5",
+    headline: trip.name, body: tripSummary,
+    buttons: { primary: "Start planning", secondary: "Dive in" },
   });
 
   return slides;
