@@ -19,8 +19,7 @@ import {
   DndContext, DragEndEvent, DragStartEvent,
   PointerSensor, useSensor, useSensors, closestCenter,
 } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 
 interface TripSwitcherItem {
   trip: Trip;
