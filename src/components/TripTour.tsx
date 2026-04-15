@@ -314,7 +314,7 @@ function buildSlides(
           dayTitle: bestAnchor.name, dayColor: dayColors[anchorDayIdx] || "#1D9E75",
           body: [bestAnchor.description, bestAnchor.ai_note].filter(Boolean).join(" "),
           stops: [],
-          images: dayImages.length >= 2 ? dayImages.slice(0, 2) : undefined,
+          images: dayImages.length >= 2 ? dayImages.slice(0, 2) : tripImages.length >= 2 ? tripImages.slice(0, 2) : undefined,
         });
       }
     }
