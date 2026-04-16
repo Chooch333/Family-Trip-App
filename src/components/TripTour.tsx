@@ -307,7 +307,7 @@ function buildSlides(
         label: arrivalLabel, labelColor: "#D85A30",
         headline: city.city,
         body: cityDays[0]?.narrative || `${cityDays.length} day${cityDays.length > 1 ? "s" : ""} in ${city.city}.`,
-        images: nextTripPair(),
+        images: nextTripImages(2),
       });
     }
     for (const day of cityDays) {
@@ -328,7 +328,7 @@ function buildSlides(
         cardLabel: label, cardLabelColor: dayColor,
         dayTitle: day.title || `Day ${day.day_number}`, dayColor, body,
         stops: displayStops.map(s => ({ name: s.name, meta: `${s.stop_type} · ${s.duration_minutes} min`, time: formatTime12(s.start_time), isAnchor: !!s.is_anchor, color: dayColor })),
-        images: dayImages.length >= 2 ? dayImages.slice(0, 2) : nextTripPair(),
+        images: dayImages.length >= 2 ? dayImages.slice(0, 2) : nextTripImages(2),
       });
     }
   }
@@ -347,7 +347,7 @@ function buildSlides(
         headline: trip.name,
         body: (trip as Trip & { trip_summary?: string }).trip_summary || `That's the shape of it. Ready to make it yours?`,
         buttons: { primary: "Explore my trip" },
-        images: nextTripPair(),
+        images: nextTripImages(2),
       });
     }
   }
