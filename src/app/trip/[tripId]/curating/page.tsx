@@ -98,14 +98,38 @@ export default function CuratingPage() {
   const router = useRouter();
 
   // ── Dual-source photo pipeline: Unsplash first (pro quality), Google Places fallback ──
+  // usedUrls tracks all URLs already picked across the entire slideshow to prevent repeats
+  const usedUrls = new Set<string>();
+
   async function fetchSlideImages(query: string, tripId: string, count = 2): Promise<string[]> {
+    const excludeParam = Array.from(usedUrls).join(",");
+
     // Try Unsplash first — professional editorial photos
     try {
-      const unsplashRes = await fetch(`/api/unsplash/search?${new URLSearchParams({ query, count: String(count) })}`);
+      const unsplashRes = await fetch(`/api/unsplash/search?${new URLSearchParams({ query, count: String(count), exclude: excludeParam })}`);
       if (unsplashRes.ok) {
         const data = await unsplashRes.json();
-        const urls = (data.images || []).map((img: any) => img.url).filter(Boolean);
-        if (urls.length >= count) return urls.slice(0, count);
+        const urls = (data.images || []).map((img: any) => img.url).filter((u: string) => u && !usedUrls.has(u));
+        if (urls.length >= count) {
+          const picked = urls.slice(0, count);
+          picked.forEach((u: string) => usedUrls.add(u));
+          return picked;
+        }
+        // If we got some but not enough, keep what we got and try Places for the rest
+        if (urls.length > 0) {
+          urls.forEach((u: string) => usedUrls.add(u));
+          const remaining = count - urls.length;
+          try {
+            const placesRes = await fetch(`/api/places/photos?${new URLSearchParams({ query, count: String(remaining), tripId })}`);
+            if (placesRes.ok) {
+              const pData = await placesRes.json();
+              const extra = (pData.images || []).filter((u: string) => u && !usedUrls.has(u)).slice(0, remaining);
+              extra.forEach((u: string) => usedUrls.add(u));
+              return [...urls.slice(0, count - extra.length), ...extra];
+            }
+          } catch { /* return what we have */ }
+          return urls.slice(0, count);
+        }
       }
     } catch { /* fall through to Google Places */ }
 
@@ -114,11 +138,23 @@ export default function CuratingPage() {
       const placesRes = await fetch(`/api/places/photos?${new URLSearchParams({ query, count: String(count), tripId })}`);
       if (placesRes.ok) {
         const data = await placesRes.json();
-        return (data.images || []).filter(Boolean).slice(0, count);
+        const urls = (data.images || []).filter((u: string) => u && !usedUrls.has(u)).slice(0, count);
+        urls.forEach((u: string) => usedUrls.add(u));
+        return urls;
       }
     } catch { /* return empty */ }
 
     return [];
+  }
+
+  // Fetch one unique image per query — search individually, take #1 result each time
+  async function fetchOnePerQuery(queries: string[], tripId: string): Promise<string[]> {
+    const results: string[] = [];
+    for (const q of queries) {
+      const imgs = await fetchSlideImages(q, tripId, 1);
+      if (imgs.length > 0) results.push(imgs[0]);
+    }
+    return results;
   }
   const params = useParams();
   const tripId = params.tripId as string;
