@@ -202,7 +202,17 @@ export default function CuratingPage() {
       const summaries: GeneratedDaySummary[] = [];
       let saved = 0;
 
-      // Fetch hype slide images BEFORE generation — specific evocative queries per image
+      // Wait for map cinematic animation to finish before fetching hype images
+      // This prevents network contention during the cinematic and ensures smooth animation
+      const curateStartTime = Date.now();
+      const CINEMATIC_DURATION = 6000;
+      const elapsedSoFar = Date.now() - curateStartTime;
+      const cinematicWait = Math.max(0, CINEMATIC_DURATION - elapsedSoFar);
+      if (cinematicWait > 0) {
+        await new Promise(resolve => setTimeout(resolve, cinematicWait));
+      }
+
+      // Fetch hype slide images AFTER cinematic — specific evocative queries per image
       // Each query targets a different visual mood; one search per photo = curated feel
       try {
         const destName = dest;
