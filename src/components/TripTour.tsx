@@ -446,12 +446,12 @@ export default function TripTour({ tripId, trip, onComplete, generationComplete 
       ))}
       {slides.map((s, i) => s.layout === "center" ? (
         <div key={s.key} style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: 40, opacity: i === current ? 1 : 0, transition: "opacity 0.5s ease", pointerEvents: i === current ? "auto" : "none", zIndex: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 500, color: s.labelColor, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 16, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>{s.label}</div>
-          <div style={{ fontSize: 32, fontWeight: 500, color: "white", lineHeight: 1.2, marginBottom: 20, textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}>{s.headline}</div>
-          <div style={{ fontSize: 15, color: "rgba(255,255,255,0.8)", lineHeight: 1.7, marginBottom: 36, maxWidth: 460, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>{s.body}</div>
+          <div style={{ fontSize: 12, fontWeight: 500, color: s.labelColor, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 16, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>{s.label}</div>
+          <div style={{ fontSize: 35, fontWeight: 500, color: "white", lineHeight: 1.2, marginBottom: 20, textShadow: "0 2px 8px rgba(0,0,0,0.6)" }}>{s.headline}</div>
+          <div style={{ fontSize: 17, color: "rgba(255,255,255,0.8)", lineHeight: 1.7, marginBottom: 36, maxWidth: 500, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>{s.body}</div>
           {s.buttons && (
             <div style={{ display: "flex", gap: 12 }}>
-              <button onClick={onComplete} style={{ padding: "13px 28px", borderRadius: 8, background: "#1D9E75", color: "white", fontSize: 14, fontWeight: 500, border: "none", cursor: "pointer" }}>{s.buttons.primary}</button>
+              <button onClick={onComplete} style={{ padding: "14px 30px", borderRadius: 8, background: "#1D9E75", color: "white", fontSize: 15, fontWeight: 500, border: "none", cursor: "pointer" }}>{s.buttons.primary}</button>
             </div>
           )}
         </div>
