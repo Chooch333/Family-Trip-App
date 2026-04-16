@@ -202,12 +202,47 @@ export default function CuratingPage() {
       const summaries: GeneratedDaySummary[] = [];
       let saved = 0;
 
-      // Fetch hype slide images BEFORE generation so they're ready for the first slide
-      // 4 per category = 12 unique trip-level photos for hype/city/anchor/final slides
+      // Fetch hype slide images BEFORE generation — specific evocative queries per image
+      // Each query targets a different visual mood; one search per photo = curated feel
       try {
-        const destImgs = await fetchSlideImages(dest, tripId, 5);
-        const foodImgs = await fetchSlideImages(`${dest} food`, tripId, 5);
-        const gemsImgs = await fetchSlideImages(`${dest} streets`, tripId, 5);
+        const destName = dest;
+        // Extract cities if destination has multiple (e.g. "Rome, Florence, Amalfi Coast")
+        const destCities = dest.split(/[,&]/).map((s: string) => s.trim()).filter(Boolean);
+        const primaryCity = destCities[0] || dest;
+        const secondaryCity = destCities.length > 1 ? destCities[1] : primaryCity;
+
+        // Destination hype: iconic landmarks, aerial views, atmosphere
+        const destQueries = [
+          `${primaryCity} iconic landmark travel`,
+          `${secondaryCity} aerial cityscape panorama`,
+          `${primaryCity} sunset golden hour`,
+          `${destName} scenic landscape travel photography`,
+          `${secondaryCity} architecture historic`,
+        ];
+
+        // Food hype: atmosphere of eating, not food close-ups
+        const foodQueries = [
+          `${primaryCity} outdoor restaurant terrace dining`,
+          `${destName} local market fresh produce`,
+          `${primaryCity} cafe street scene`,
+          `${secondaryCity} traditional cuisine restaurant interior`,
+          `${destName} food market atmosphere`,
+        ];
+
+        // Hidden gems hype: narrow streets, unexpected beauty, local life
+        const gemsQueries = [
+          `${primaryCity} cobblestone alley narrow street`,
+          `${secondaryCity} hidden courtyard local neighborhood`,
+          `${destName} secret garden viewpoint`,
+          `${primaryCity} off beaten path local scene`,
+          `${secondaryCity} quiet piazza morning light`,
+        ];
+
+        const [destImgs, foodImgs, gemsImgs] = await Promise.all([
+          fetchOnePerQuery(destQueries, tripId),
+          fetchOnePerQuery(foodQueries, tripId),
+          fetchOnePerQuery(gemsQueries, tripId),
+        ]);
 
         const allImages = [
           ...destImgs.slice(0, 5),
