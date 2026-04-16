@@ -152,14 +152,12 @@ export default function CuratingPage() {
       const summaries: GeneratedDaySummary[] = [];
       let saved = 0;
 
-      // Fetch hype slide images (destination-level) — runs in parallel with first chunk
+      // Fetch hype slide images (destination-level) — staggered to avoid rate limits
       const hypeImagePromise = (async () => {
         try {
-          const [destImgs, foodImgs, gemsImgs] = await Promise.all([
-            fetchSlideImages(`${dest} landmarks`, tripId),
-            fetchSlideImages(`${dest} restaurants`, tripId),
-            fetchSlideImages(`${dest} neighborhoods`, tripId),
-          ]);
+          const destImgs = await fetchSlideImages(`${dest} landmarks`, tripId);
+          const foodImgs = await fetchSlideImages(`${dest} restaurants`, tripId);
+          const gemsImgs = await fetchSlideImages(`${dest} neighborhoods`, tripId);
 
           // Build 6 images: 2 per hype slide, with fallback to destination images
           const destPool = destImgs.slice(0, 4);
