@@ -97,13 +97,13 @@ interface DayData {
 export default function CuratingPage() {
   const router = useRouter();
 
-  // ── Fetch 2 Unsplash images for a slide ──
-  async function fetchSlideImages(query: string, count = 4): Promise<string[]> {
+  // ── Fetch slide images from Google Places → Supabase Storage ──
+  async function fetchSlideImages(query: string, tripId: string, count = 2): Promise<string[]> {
     try {
-      const res = await fetch(`/api/unsplash/search?${new URLSearchParams({ query, count: String(count) })}`);
+      const res = await fetch(`/api/places/photos?${new URLSearchParams({ query, count: String(count), tripId })}`);
       if (!res.ok) return [];
       const data = await res.json();
-      return (data.images || []).map((img: any) => img.url).filter(Boolean);
+      return (data.images || []).filter(Boolean);
     } catch { return []; }
   }
   const params = useParams();
