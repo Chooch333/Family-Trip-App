@@ -203,13 +203,19 @@ export default function CuratingPage() {
           for (const dayData of daysArr) {
             const color = dayColors[(dayData.day_number - 1) % dayColors.length];
 
-            // Fetch slide images before insert so they arrive with the day data
+            // Fetch slide images before insert — use specific stops for unique photos per day
+            const dayStops = dayData.stops || [];
+            const anchorStop = dayStops.find(s => s.is_anchor);
+            const firstStop = dayStops[0];
+            const searchStop = anchorStop || firstStop;
             const dayCity = dayData.title.split(/[—\-,]/)[0].trim();
-            const imgQuery = dayCity && dayCity.toLowerCase() !== dest.toLowerCase()
-              ? `${dayCity} attractions`
-              : `${dest} attractions`;
+            const imgQuery = searchStop
+              ? `${searchStop.name} ${dayCity || dest}`
+              : dayCity && dayCity.toLowerCase() !== dest.toLowerCase()
+                ? `${dayCity} attractions`
+                : `${dest} attractions`;
             let slideImages = (await fetchSlideImages(imgQuery, tripId)).slice(0, 2);
-            // If day-specific search came up short, fall back to destination
+            // If specific search came up short, fall back to destination
             if (slideImages.length < 2) {
               slideImages = (await fetchSlideImages(`${dest} attractions`, tripId)).slice(0, 2);
             }
