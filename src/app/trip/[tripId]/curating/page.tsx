@@ -153,18 +153,16 @@ export default function CuratingPage() {
       let saved = 0;
 
       // Fetch hype slide images BEFORE generation so they're ready for the first slide
+      // 4 per category = 12 unique trip-level photos for hype/city/anchor/final slides
       try {
-        const destImgs = await fetchSlideImages(`${dest} landmarks`, tripId);
-        const foodImgs = await fetchSlideImages(`${dest} restaurants`, tripId);
-        const gemsImgs = await fetchSlideImages(`${dest} neighborhoods`, tripId);
+        const destImgs = await fetchSlideImages(`${dest} landmarks`, tripId, 4);
+        const foodImgs = await fetchSlideImages(`${dest} restaurants`, tripId, 4);
+        const gemsImgs = await fetchSlideImages(`${dest} neighborhoods`, tripId, 4);
 
-        const destPool = destImgs.slice(0, 4);
-        const foodPool = foodImgs.length >= 2 ? foodImgs.slice(0, 2) : destPool.slice(0, 2);
-        const gemsPool = gemsImgs.length >= 2 ? gemsImgs.slice(0, 2) : destPool.slice(0, 2);
         const allImages = [
-          ...destPool.slice(0, 2),
-          ...foodPool.slice(0, 2),
-          ...gemsPool.slice(0, 2),
+          ...destImgs.slice(0, 4),
+          ...foodImgs.slice(0, 4),
+          ...gemsImgs.slice(0, 4),
         ];
 
         if (allImages.length > 0) {
