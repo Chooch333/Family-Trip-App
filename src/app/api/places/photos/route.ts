@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // Step 1: Text Search to find place and get photo references
+    // Step 1: Text Search — find multiple places, take best photo from each
     const searchRes = await fetch(`${PLACES_BASE}`, {
       method: "POST",
       headers: {
@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
       },
       body: JSON.stringify({
         textQuery: query,
-        maxResultCount: 1,
+        maxResultCount: Math.min(count * 2, 10),
         languageCode: "en",
       }),
     });
@@ -48,32 +48,32 @@ export async function GET(req: NextRequest) {
     }
 
     const searchData = await searchRes.json();
-    const place = searchData.places?.[0];
-    if (!place?.photos || place.photos.length === 0) {
+    const places = searchData.places || [];
+    if (places.length === 0) {
       return NextResponse.json({ images: [] });
     }
 
-    // Step 2: Fetch photos and upload to Supabase Storage
+    // Step 2: Take the first photo from each place (best quality, most iconic)
     const supabase = getSupabaseAdmin();
-    const photoRefs = place.photos.slice(0, count);
     const images: string[] = [];
 
-    for (const photo of photoRefs) {
+    for (const place of places) {
+      if (images.length >= count) break;
+      if (!place.photos || place.photos.length === 0) continue;
+
       try {
-        // Fetch photo binary from Google
-        const photoUrl = `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=1080&key=${apiKey}`;
+        const photo = place.photos[0]; // First photo = highest ranked
+        const photoUrl = `https://places.googleapis.com/v1/${photo.name}/media?maxWidthPx=1920&key=${apiKey}`;
         const photoRes = await fetch(photoUrl);
         if (!photoRes.ok) continue;
 
         const blob = await photoRes.blob();
         const buffer = Buffer.from(await blob.arrayBuffer());
 
-        // Generate unique filename
         const timestamp = Date.now();
         const rand = Math.random().toString(36).slice(2, 8);
         const filePath = `${tripId}/${timestamp}-${rand}.jpg`;
 
-        // Upload to Supabase Storage
         const { error: uploadError } = await supabase.storage
           .from("slide-photos")
           .upload(filePath, buffer, {
@@ -87,7 +87,6 @@ export async function GET(req: NextRequest) {
           continue;
         }
 
-        // Get public URL
         const { data: urlData } = supabase.storage
           .from("slide-photos")
           .getPublicUrl(filePath);
