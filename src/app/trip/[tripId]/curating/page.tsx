@@ -174,9 +174,9 @@ export default function CuratingPage() {
         const gemsImgs = await fetchSlideImages(`${dest} streets`, tripId, 5);
 
         const allImages = [
-          ...destImgs.slice(0, 4),
-          ...foodImgs.slice(0, 4),
-          ...gemsImgs.slice(0, 4),
+          ...destImgs.slice(0, 5),
+          ...foodImgs.slice(0, 5),
+          ...gemsImgs.slice(0, 5),
         ];
 
         if (allImages.length > 0) {
