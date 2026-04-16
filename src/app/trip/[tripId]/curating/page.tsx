@@ -208,8 +208,8 @@ export default function CuratingPage() {
             // Fetch slide images before insert so they arrive with the day data
             const dayCity = dayData.title.split(/[—\-,]/)[0].trim();
             const imgQuery = dayCity && dayCity.toLowerCase() !== dest.toLowerCase()
-              ? `${dayCity} travel`
-              : `${dest} travel`;
+              ? `${dayCity} attractions`
+              : `${dest} attractions`;
             let slideImages = (await fetchSlideImages(imgQuery, tripId)).slice(0, 2);
             // If day-specific search came up short, fall back to destination
             if (slideImages.length < 2) {
