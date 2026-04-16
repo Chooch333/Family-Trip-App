@@ -384,13 +384,17 @@ export default function TripTour({ tripId, trip, onComplete, generationComplete 
   const [current, setCurrent] = useState(0);
   const [cardVisible, setCardVisible] = useState(false);
 
+  const [currentTrip, setCurrentTrip] = useState(trip);
+
   const fetchData = useCallback(async () => {
-    const [daysRes, stopsRes] = await Promise.all([
+    const [daysRes, stopsRes, tripRes] = await Promise.all([
       supabase.from("days").select("*").eq("trip_id", tripId).order("day_number"),
       supabase.from("stops").select("*").eq("trip_id", tripId).is("version_owner", null).order("sort_order"),
+      supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
     ]);
     if (daysRes.data) setDays(daysRes.data as Day[]);
     if (stopsRes.data) setStops(stopsRes.data as Stop[]);
+    if (tripRes.data) setCurrentTrip(tripRes.data as Trip);
   }, [tripId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
