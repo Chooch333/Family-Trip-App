@@ -207,7 +207,6 @@ export default function CuratingPage() {
 
       // Wait for map cinematic animation to finish before fetching hype images
       // This prevents network contention during the cinematic and ensures smooth animation
-      const curateStartTime = Date.now();
       const CINEMATIC_DURATION = 6000;
       const elapsedSoFar = Date.now() - curateStartTime;
       const cinematicWait = Math.max(0, CINEMATIC_DURATION - elapsedSoFar);
