@@ -323,13 +323,11 @@ export default function CuratingPage() {
   }, []);
 
   // Track when first chunk of days is ready (one-shot: false → true)
-  useEffect(() => {
-    if (generatedDays >= 2 && !firstChunkDone) setFirstChunkDone(true);
-  }, [generatedDays, firstChunkDone]);
+  // (kept for potential future use but no longer gates tour launch)
 
-  // Cinematic → tour when first chunk is done + minimum cinematic display time
+  // Cinematic → tour when hype images are ready + minimum cinematic display time
   useEffect(() => {
-    if (phase !== "cinematic" || tourLaunched.current || !firstChunkDone) return;
+    if (phase !== "cinematic" || tourLaunched.current || !hypeReady) return;
 
     const elapsed = Date.now() - cinematicStartRef.current;
     const minDuration = 6000;
@@ -344,7 +342,7 @@ export default function CuratingPage() {
     }, remaining);
 
     return () => clearTimeout(timer);
-  }, [phase, firstChunkDone]);
+  }, [phase, hypeReady]);
 
   // Handle tour completion — always redirect, never go back
   function handleTourComplete() {
