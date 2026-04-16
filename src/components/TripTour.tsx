@@ -250,28 +250,27 @@ function buildSlides(
   let cardIdx = 0;
   const tripImages: string[] = Array.isArray((trip as any).slide_images) ? (trip as any).slide_images : [];
 
-  // Rolling offset through trip image pool — each slide gets next unique pair
+  // Rolling offset through trip image pool — each slide gets next unique set, no repeats
   let tripImgOffset = 0;
-  function nextTripPair(): string[] | undefined {
+  function nextTripImages(n: number): string[] | undefined {
     if (tripImages.length < 2) return undefined;
-    const pair = tripImages.slice(tripImgOffset, tripImgOffset + 2);
-    if (pair.length >= 2) {
-      tripImgOffset += 2;
-      return pair;
+    const imgs: string[] = [];
+    for (let i = 0; i < n && tripImgOffset < tripImages.length; i++) {
+      imgs.push(tripImages[tripImgOffset++]);
     }
-    // Wrap around if we've exhausted the pool
+    if (imgs.length >= 2) return imgs;
     tripImgOffset = 0;
-    return tripImages.slice(0, 2);
+    return tripImages.slice(0, Math.min(n, tripImages.length));
   }
 
-  // ── Hype slides ──
+  // ── Hype slides — 3 photos each for richer crossfade ──
   slides.push({
     layout: "center", key: "hype-destination",
     bg: "#111",
     label: "THE DESTINATION", labelColor: "#5DCAA5",
     headline: trip.destination || trip.name,
     body: buildDestinationHype(trip),
-    images: nextTripPair(),
+    images: nextTripImages(3),
   });
   gradientIdx++;
   slides.push({
@@ -280,7 +279,7 @@ function buildSlides(
     label: "THE FOOD", labelColor: "#D85A30",
     headline: "How I'm thinking about food.",
     body: buildFoodHype(trip),
-    images: nextTripPair(),
+    images: nextTripImages(3),
   });
   gradientIdx++;
   slides.push({
@@ -289,7 +288,7 @@ function buildSlides(
     label: "HIDDEN GEMS", labelColor: "#AFA9EC",
     headline: "Things most people miss.",
     body: buildGemsHype(trip),
-    images: nextTripPair(),
+    images: nextTripImages(3),
   });
   gradientIdx++;
 
