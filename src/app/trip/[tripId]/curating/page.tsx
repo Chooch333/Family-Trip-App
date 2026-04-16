@@ -210,10 +210,10 @@ export default function CuratingPage() {
             const imgQuery = dayCity && dayCity.toLowerCase() !== dest.toLowerCase()
               ? `${dayCity} travel`
               : `${dest} travel`;
-            let slideImages = (await fetchSlideImages(imgQuery)).slice(0, 2);
+            let slideImages = (await fetchSlideImages(imgQuery, tripId)).slice(0, 2);
             // If day-specific search came up short, fall back to destination
             if (slideImages.length < 2) {
-              slideImages = (await fetchSlideImages(`${dest} travel`)).slice(0, 2);
+              slideImages = (await fetchSlideImages(`${dest} attractions`, tripId)).slice(0, 2);
             }
 
             const { data: dayRow } = await supabase.from("days").insert({
