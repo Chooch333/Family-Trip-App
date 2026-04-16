@@ -171,6 +171,7 @@ export default function CuratingPage() {
         setHypeReady(true);
       } catch (err) {
         console.error("Hype image fetch failed:", err);
+        setHypeReady(true);
       }
 
       async function generateChunk(startDay: number, endDay: number, attempt = 0): Promise<boolean> {
