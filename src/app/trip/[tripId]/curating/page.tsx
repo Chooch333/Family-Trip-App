@@ -285,22 +285,38 @@ export default function CuratingPage() {
           for (const dayData of daysArr) {
             const color = dayColors[(dayData.day_number - 1) % dayColors.length];
 
-            // Fetch slide images before insert — use specific stops for unique photos per day
+            // Fetch slide images per-stop: search individually for top 2 visual stops, take #1 each
             const dayStops = dayData.stops || [];
-            const anchorStop = dayStops.find(s => s.is_anchor);
-            const firstStop = dayStops[0];
-            const searchStop = anchorStop || firstStop;
             const dayCity = dayData.title.split(/[—\-,]/)[0].trim();
-            const imgQuery = searchStop
-              ? `${searchStop.name} ${dayCity || dest}`
-              : dayCity && dayCity.toLowerCase() !== dest.toLowerCase()
-                ? `${dayCity} attractions`
-                : `${dest} attractions`;
-            let slideImages = (await fetchSlideImages(imgQuery, tripId)).slice(0, 2);
-            // If specific search came up short, fall back to destination
-            if (slideImages.length < 2) {
-              slideImages = (await fetchSlideImages(`${dest} attractions`, tripId)).slice(0, 2);
+
+            // Build smart queries: skip restaurant/food names (bad Unsplash results),
+            // prefer landmarks, neighborhoods, and natural features
+            const visualStops = dayStops
+              .filter(s => s.stop_type !== "transit" && s.stop_type !== "food")
+              .sort((a, b) => (b.is_anchor ? 1 : 0) - (a.is_anchor ? 1 : 0));
+            const foodStops = dayStops.filter(s => s.stop_type === "food");
+
+            // For non-food stops: use stop name + city
+            // For food stops: use neighborhood/city instead of restaurant name
+            const stopQueries: string[] = [];
+            for (const s of visualStops.slice(0, 2)) {
+              stopQueries.push(`${s.name} ${dayCity || dest}`);
             }
+            // If we don't have 2 visual stops, add city-level queries
+            if (stopQueries.length < 2) {
+              if (dayCity && dayCity.toLowerCase() !== dest.toLowerCase()) {
+                stopQueries.push(`${dayCity} landmark travel photography`);
+              } else {
+                stopQueries.push(`${dest} scenic travel`);
+              }
+            }
+            // If only food stops exist on this day, use neighborhood + "dining district"
+            if (stopQueries.length === 0 && foodStops.length > 0) {
+              stopQueries.push(`${dayCity || dest} dining district street scene`);
+              stopQueries.push(`${dayCity || dest} food market atmosphere`);
+            }
+
+            const slideImages = await fetchOnePerQuery(stopQueries.slice(0, 2), tripId);
 
             const { data: dayRow } = await supabase.from("days").insert({
               trip_id: tripId,
