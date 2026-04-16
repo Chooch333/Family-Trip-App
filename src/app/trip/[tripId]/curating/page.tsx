@@ -156,9 +156,9 @@ export default function CuratingPage() {
       const hypeImagePromise = (async () => {
         try {
           const [destImgs, foodImgs, gemsImgs] = await Promise.all([
-            fetchSlideImages(`${dest} travel scenic`),
-            fetchSlideImages(`${dest} food cuisine`),
-            fetchSlideImages(`${dest} street neighborhood local`),
+            fetchSlideImages(`${dest} landmarks`, tripId),
+            fetchSlideImages(`${dest} restaurants`, tripId),
+            fetchSlideImages(`${dest} neighborhoods`, tripId),
           ]);
 
           // Build 6 images: 2 per hype slide, with fallback to destination images
