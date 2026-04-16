@@ -296,9 +296,6 @@ function buildSlides(
   // ── City & day slides ──
   const cities = getDistinctCities(days);
   const multiCity = cities.length >= 2;
-  const anchoredStops = stops.filter(s => s.is_anchor && s.stop_type !== "transit");
-  const bestAnchor = [...anchoredStops].sort((a, b) => (b.ai_note || "").length - (a.ai_note || "").length)[0];
-
   for (let ci = 0; ci < cities.length; ci++) {
     const city = cities[ci];
     const nextCityStart = ci + 1 < cities.length ? cities[ci + 1].firstDayIndex : days.length;
