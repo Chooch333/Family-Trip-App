@@ -314,22 +314,6 @@ function buildSlides(
         images: nextTripPair(),
       });
     }
-    if (bestAnchor) {
-      const anchorDay = days.find(d => d.id === bestAnchor.day_id);
-      const anchorDayIdx = anchorDay ? days.indexOf(anchorDay) : -1;
-      if (anchorDayIdx >= city.firstDayIndex && anchorDayIdx < nextCityStart) {
-        const dayImages: string[] = anchorDay && Array.isArray((anchorDay as any).slide_images) ? (anchorDay as any).slide_images : [];
-        slides.push({
-          layout: "card", key: `anchor-${bestAnchor.id}`,
-          bg: getGradient(gradientIdx++), position: getCardPosition(cardIdx++),
-          cardLabel: "Anchor spotlight", cardLabelColor: "#1D9E75",
-          dayTitle: bestAnchor.name, dayColor: dayColors[anchorDayIdx] || "#1D9E75",
-          body: [bestAnchor.description, bestAnchor.ai_note].filter(Boolean).join(" "),
-          stops: [],
-          images: dayImages.length >= 2 ? dayImages.slice(0, 2) : nextTripPair(),
-        });
-      }
-    }
     for (const day of cityDays) {
       const dayIdx = days.indexOf(day);
       const dayColor = dayColors[dayIdx] || "#1D9E75";
