@@ -173,6 +173,9 @@ export default function CuratingPage() {
     startedRef.current = true;
 
     async function curate() {
+      // Capture when curate starts — used to calculate how much cinematic time has elapsed
+      const curateStartTime = Date.now();
+
       const m = await getMemberForTrip(tripId);
       if (!m) { router.replace(`/trip/${tripId}/invite`); return; }
       setMember(m);
