@@ -97,14 +97,28 @@ interface DayData {
 export default function CuratingPage() {
   const router = useRouter();
 
-  // ── Fetch slide images from Google Places → Supabase Storage ──
+  // ── Dual-source photo pipeline: Unsplash first (pro quality), Google Places fallback ──
   async function fetchSlideImages(query: string, tripId: string, count = 2): Promise<string[]> {
+    // Try Unsplash first — professional editorial photos
     try {
-      const res = await fetch(`/api/places/photos?${new URLSearchParams({ query, count: String(count), tripId })}`);
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.images || []).filter(Boolean);
-    } catch { return []; }
+      const unsplashRes = await fetch(`/api/unsplash/search?${new URLSearchParams({ query, count: String(count) })}`);
+      if (unsplashRes.ok) {
+        const data = await unsplashRes.json();
+        const urls = (data.images || []).map((img: any) => img.url).filter(Boolean);
+        if (urls.length >= count) return urls.slice(0, count);
+      }
+    } catch { /* fall through to Google Places */ }
+
+    // Fallback: Google Places → Supabase Storage
+    try {
+      const placesRes = await fetch(`/api/places/photos?${new URLSearchParams({ query, count: String(count), tripId })}`);
+      if (placesRes.ok) {
+        const data = await placesRes.json();
+        return (data.images || []).filter(Boolean).slice(0, count);
+      }
+    } catch { /* return empty */ }
+
+    return [];
   }
   const params = useParams();
   const tripId = params.tripId as string;
