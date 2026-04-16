@@ -169,9 +169,9 @@ export default function CuratingPage() {
       // Fetch hype slide images BEFORE generation so they're ready for the first slide
       // 4 per category = 12 unique trip-level photos for hype/city/anchor/final slides
       try {
-        const destImgs = await fetchSlideImages(dest, tripId, 4);
-        const foodImgs = await fetchSlideImages(`best restaurants ${dest}`, tripId, 4);
-        const gemsImgs = await fetchSlideImages(`${dest} scenic views`, tripId, 4);
+        const destImgs = await fetchSlideImages(dest, tripId, 5);
+        const foodImgs = await fetchSlideImages(`${dest} food`, tripId, 5);
+        const gemsImgs = await fetchSlideImages(`${dest} streets`, tripId, 5);
 
         const allImages = [
           ...destImgs.slice(0, 4),
