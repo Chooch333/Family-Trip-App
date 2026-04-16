@@ -458,21 +458,21 @@ export default function TripTour({ tripId, trip, onComplete, generationComplete 
       ) : null)}
       {slides.map((s, i) => s.layout === "card" ? (
         <div key={s.key} style={{ position: "absolute", top: s.position.top, left: s.position.left, right: s.position.right, bottom: s.position.bottom, width: 380, background: "rgba(255,255,255,0.96)", borderRadius: 10, backdropFilter: "blur(10px)", zIndex: 10, overflow: "hidden", opacity: i === current && cardVisible ? 1 : 0, transition: "opacity 0.4s ease", pointerEvents: i === current ? "auto" : "none" }}>
-          <div style={{ padding: "18px 20px 12px" }}>
-            <div style={{ fontSize: 10, fontWeight: 500, color: s.cardLabelColor, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>{s.cardLabel}</div>
-            <div style={{ fontSize: 18, fontWeight: 500, color: "#1a1a1a", marginBottom: 10 }}>{s.dayTitle}</div>
-            {s.body && (<div style={{ fontSize: 12, color: "#666", lineHeight: 1.6, marginBottom: s.stops.length > 0 ? 12 : 0 }}>{s.body}</div>)}
+          <div style={{ padding: "20px 22px 14px" }}>
+            <div style={{ fontSize: 11, fontWeight: 500, color: s.cardLabelColor, textTransform: "uppercase", letterSpacing: 0.8, marginBottom: 4 }}>{s.cardLabel}</div>
+            <div style={{ fontSize: 20, fontWeight: 500, color: "#1a1a1a", marginBottom: 10 }}>{s.dayTitle}</div>
+            {s.body && (<div style={{ fontSize: 13, color: "#666", lineHeight: 1.6, marginBottom: s.stops.length > 0 ? 12 : 0 }}>{s.body}</div>)}
           </div>
           {s.stops.length > 0 && (
-            <div style={{ padding: "0 20px 16px" }}>
+            <div style={{ padding: "0 22px 18px" }}>
               {s.stops.map((st, j) => (
                 <div key={j} style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 0" }}>
                   <div style={{ width: st.isAnchor ? 6 : 3, height: 24, borderRadius: 2, background: st.color, opacity: st.isAnchor ? 1 : 0.25, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 500, color: "#1a1a1a" }}>{st.name}</div>
-                    <div style={{ fontSize: 10, color: "#999" }}>{st.meta}</div>
+                    <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a" }}>{st.name}</div>
+                    <div style={{ fontSize: 11, color: "#999" }}>{st.meta}</div>
                   </div>
-                  {st.time && <div style={{ fontSize: 10, color: "#bbb", whiteSpace: "nowrap", marginRight: 4 }}>{st.time}</div>}
+                  {st.time && <div style={{ fontSize: 11, color: "#bbb", whiteSpace: "nowrap", marginRight: 4 }}>{st.time}</div>}
                   {st.isAnchor && <div style={{ flexShrink: 0 }}><AnchorSvg /></div>}
                 </div>
               ))}
