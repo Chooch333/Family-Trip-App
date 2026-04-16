@@ -404,13 +404,6 @@ export default function TripTour({ tripId, trip, onComplete, generationComplete 
     return () => clearInterval(interval);
   }, [generationComplete, fetchData]);
 
-  const [currentTrip, setCurrentTrip] = useState(trip);
-  useEffect(() => {
-    if (!generationComplete) return;
-    supabase.from("trips").select("*").eq("id", tripId).maybeSingle()
-      .then(({ data }) => { if (data) setCurrentTrip(data as Trip); });
-  }, [generationComplete, tripId]);
-
   const dayColors = generateDayColors(days.length);
   const slides = buildSlides(currentTrip, days, stops, dayColors, generationComplete);
 
