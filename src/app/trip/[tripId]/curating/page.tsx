@@ -152,30 +152,27 @@ export default function CuratingPage() {
       const summaries: GeneratedDaySummary[] = [];
       let saved = 0;
 
-      // Fetch hype slide images (destination-level) — staggered to avoid rate limits
-      const hypeImagePromise = (async () => {
-        try {
-          const destImgs = await fetchSlideImages(`${dest} landmarks`, tripId);
-          const foodImgs = await fetchSlideImages(`${dest} restaurants`, tripId);
-          const gemsImgs = await fetchSlideImages(`${dest} neighborhoods`, tripId);
+      // Fetch hype slide images BEFORE generation so they're ready for the first slide
+      try {
+        const destImgs = await fetchSlideImages(`${dest} landmarks`, tripId);
+        const foodImgs = await fetchSlideImages(`${dest} restaurants`, tripId);
+        const gemsImgs = await fetchSlideImages(`${dest} neighborhoods`, tripId);
 
-          // Build 6 images: 2 per hype slide, with fallback to destination images
-          const destPool = destImgs.slice(0, 4);
-          const foodPool = foodImgs.length >= 2 ? foodImgs.slice(0, 2) : destPool.slice(0, 2);
-          const gemsPool = gemsImgs.length >= 2 ? gemsImgs.slice(0, 2) : destPool.slice(0, 2);
-          const allImages = [
-            ...destPool.slice(0, 2),
-            ...foodPool.slice(0, 2),
-            ...gemsPool.slice(0, 2),
-          ];
+        const destPool = destImgs.slice(0, 4);
+        const foodPool = foodImgs.length >= 2 ? foodImgs.slice(0, 2) : destPool.slice(0, 2);
+        const gemsPool = gemsImgs.length >= 2 ? gemsImgs.slice(0, 2) : destPool.slice(0, 2);
+        const allImages = [
+          ...destPool.slice(0, 2),
+          ...foodPool.slice(0, 2),
+          ...gemsPool.slice(0, 2),
+        ];
 
-          if (allImages.length > 0) {
-            await supabase.from("trips").update({ slide_images: allImages }).eq("id", tripId);
-          }
-        } catch (err) {
-          console.error("Hype image fetch failed:", err);
+        if (allImages.length > 0) {
+          await supabase.from("trips").update({ slide_images: allImages }).eq("id", tripId);
         }
-      })();
+      } catch (err) {
+        console.error("Hype image fetch failed:", err);
+      }
 
       async function generateChunk(startDay: number, endDay: number, attempt = 0): Promise<boolean> {
         const prevContext = summaries.length > 0
