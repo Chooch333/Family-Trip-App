@@ -348,7 +348,7 @@ function buildSlides(
         cardLabel: label, cardLabelColor: dayColor,
         dayTitle: day.title || `Day ${day.day_number}`, dayColor, body,
         stops: displayStops.map(s => ({ name: s.name, meta: `${s.stop_type} · ${s.duration_minutes} min`, time: formatTime12(s.start_time), isAnchor: !!s.is_anchor, color: dayColor })),
-        images: dayImages.length >= 2 ? dayImages.slice(0, 2) : tripImages.length >= 2 ? tripImages.slice(0, 2) : undefined,
+        images: dayImages.length >= 2 ? dayImages.slice(0, 2) : nextTripPair(),
       });
     }
   }
@@ -362,12 +362,12 @@ function buildSlides(
     if (lastSlide.layout === "card") {
       slides.push({
         layout: "center", key: "final",
-        bg: "linear-gradient(135deg, #1a2a1a 0%, #0a1a0a 50%, #2a1a0a 100%)",
+        bg: "#111",
         label: "YOUR TRIP IS READY", labelColor: "#5DCAA5",
         headline: trip.name,
         body: (trip as Trip & { trip_summary?: string }).trip_summary || `That's the shape of it. Ready to make it yours?`,
         buttons: { primary: "Explore my trip" },
-        images: tripImages.length >= 2 ? tripImages.slice(0, 2) : undefined,
+        images: nextTripPair(),
       });
     }
   }
