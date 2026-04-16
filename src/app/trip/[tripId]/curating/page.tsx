@@ -168,6 +168,7 @@ export default function CuratingPage() {
         if (allImages.length > 0) {
           await supabase.from("trips").update({ slide_images: allImages }).eq("id", tripId);
         }
+        setHypeReady(true);
       } catch (err) {
         console.error("Hype image fetch failed:", err);
       }
