@@ -35,11 +35,11 @@ interface TripTourProps {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CARD_POSITIONS: CardPosition[] = [
-  { top: "24px", left: "24px", right: "auto", bottom: "auto" },
-  { top: "24px", left: "auto", right: "24px", bottom: "auto" },
-  { top: "auto", left: "auto", right: "24px", bottom: "24px" },
-  { top: "auto", left: "24px", right: "auto", bottom: "24px" },
-  { top: "60px", left: "24px", right: "auto", bottom: "auto" },
+  { top: "24px", left: "72px", right: "auto", bottom: "auto" },
+  { top: "24px", left: "auto", right: "72px", bottom: "auto" },
+  { top: "auto", left: "auto", right: "72px", bottom: "24px" },
+  { top: "auto", left: "72px", right: "auto", bottom: "24px" },
+  { top: "60px", left: "72px", right: "auto", bottom: "auto" },
 ];
 
 function getCardPosition(index: number): CardPosition {
