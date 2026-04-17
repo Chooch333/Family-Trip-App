@@ -60,7 +60,7 @@ export default function TripDashboard() {
   const [newDayTitle, setNewDayTitle] = useState("");
   const [addingDay, setAddingDay] = useState(false);
   const [showAddStop, setShowAddStop] = useState(false);
-  const [newStop, setNewStop] = useState({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "" });
+  const [newStop, setNewStop] = useState({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "", latitude: null as number | null, longitude: null as number | null, placeId: "" });
   const [addingStop, setAddingStop] = useState(false);
   const [chatMessages, setChatMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [chatInput, setChatInput] = useState("");
