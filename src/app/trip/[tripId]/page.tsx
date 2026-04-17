@@ -12,6 +12,8 @@ import TripTour from "@/components/TripTour";
 import SortableStopRow from "@/components/SortableStopRow";
 import Lightbox from "@/components/Lightbox";
 import AnchorIcon from "@/components/AnchorIcon";
+import PlacesAutocomplete from "@/components/PlacesAutocomplete";
+import type { PlaceResult } from "@/components/PlacesAutocomplete";
 import ReactMarkdown from "react-markdown";
 import type { Trip, TripMember, Day, Stop, Vote, Proposal, Profile } from "@/lib/database.types";
 import { extractRouteCities, isMultiCityTrip, type RouteCity } from "@/lib/routeCities";
