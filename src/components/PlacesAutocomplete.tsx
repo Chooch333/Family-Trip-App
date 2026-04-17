@@ -23,6 +23,10 @@ interface PlacesAutocompleteProps {
   biasLng?: number;
 }
 
+// Use `any` for Google Maps types — the script is loaded dynamically at runtime,
+// so we avoid a build dependency on @types/google.maps.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 export default function PlacesAutocomplete({
   placeholder = "Search for a place...",
   value,
@@ -35,7 +39,7 @@ export default function PlacesAutocomplete({
   biasLng,
 }: PlacesAutocompleteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const autocompleteRef = useRef<any>(null);
   const [ready, setReady] = useState(false);
   const [fallback, setFallback] = useState(false);
 
@@ -56,20 +60,23 @@ export default function PlacesAutocomplete({
   useEffect(() => {
     if (!ready || !inputRef.current || autocompleteRef.current) return;
 
-    const options: google.maps.places.AutocompleteOptions = {
+    const g = (window as any).google;
+    if (!g?.maps?.places) return;
+
+    const options: any = {
       fields: ["name", "formatted_address", "geometry", "place_id"],
       types: ["establishment", "geocode"],
     };
 
     // Bias toward trip destination if provided
     if (biasLat != null && biasLng != null) {
-      options.bounds = new google.maps.LatLngBounds(
-        new google.maps.LatLng(biasLat - 0.5, biasLng - 0.5),
-        new google.maps.LatLng(biasLat + 0.5, biasLng + 0.5),
+      options.bounds = new g.maps.LatLngBounds(
+        new g.maps.LatLng(biasLat - 0.5, biasLng - 0.5),
+        new g.maps.LatLng(biasLat + 0.5, biasLng + 0.5),
       );
     }
 
-    const ac = new google.maps.places.Autocomplete(inputRef.current, options);
+    const ac = new g.maps.places.Autocomplete(inputRef.current, options);
     autocompleteRef.current = ac;
 
     ac.addListener("place_changed", () => {
@@ -86,7 +93,7 @@ export default function PlacesAutocomplete({
     });
 
     return () => {
-      google.maps.event.clearInstanceListeners(ac);
+      g.maps.event.clearInstanceListeners(ac);
     };
   }, [ready, biasLat, biasLng, onPlaceSelect]);
 
