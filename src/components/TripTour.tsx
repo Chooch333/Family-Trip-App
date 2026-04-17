@@ -295,7 +295,7 @@ function buildSlides(
 
   // ── City & day slides ──
   const cities = getDistinctCities(days);
-  const multiCity = cities.length >= 2;
+  const multiCity = cities.length >= 2 && isMultiCityTrip(stops);
   for (let ci = 0; ci < cities.length; ci++) {
     const city = cities[ci];
     const nextCityStart = ci + 1 < cities.length ? cities[ci + 1].firstDayIndex : days.length;
