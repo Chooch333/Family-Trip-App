@@ -880,10 +880,10 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
           <div className="px-3 py-2 border-t border-gray-100 bg-gray-50/60">
             <div className="text-[11px] font-medium text-gray-700 mb-1.5">New stop for Day {activeDayObj.day_number}</div>
             <div className="flex flex-col gap-1.5">
-              <input
-                type="text"
+              <PlacesAutocomplete
                 value={newStop.name}
-                onChange={e => setNewStop(s => ({ ...s, name: e.target.value }))}
+                onChange={v => setNewStop(s => ({ ...s, name: v, latitude: null, longitude: null, placeId: "" }))}
+                onPlaceSelect={place => setNewStop(s => ({ ...s, name: place.name, latitude: place.latitude, longitude: place.longitude, placeId: place.placeId }))}
                 placeholder="Stop name *"
                 autoFocus
                 className="text-[11px] px-2 py-1.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
