@@ -414,6 +414,48 @@ export default function CuratingPage() {
         }
       }
 
+      // ── Post-generation: fetch city arrival + final slide images ──
+      // Detect distinct cities from generated days and add dedicated photos for arrival slides
+      try {
+        const cityNames = new Set<string>();
+        const cityList: string[] = [];
+        for (const s of summaries) {
+          const city = s.title.split(/[—\-,]/)[0].trim();
+          if (city && !cityNames.has(city.toLowerCase())) {
+            cityNames.add(city.toLowerCase());
+            cityList.push(city);
+          }
+        }
+
+        const extraImages: string[] = [];
+
+        // City arrival images — 2 per distinct city (only matters for multi-city trips)
+        if (cityList.length >= 2) {
+          for (const city of cityList) {
+            const cityImgs = await fetchOnePerQuery([
+              `${city} skyline travel panorama`,
+              `${city} iconic landmark aerial`,
+            ], tripId);
+            extraImages.push(...cityImgs);
+          }
+        }
+
+        // Final slide — 1 cinematic closing image
+        const finalImg = await fetchOnePerQuery([
+          `${dest} panorama sunset skyline`,
+        ], tripId);
+        extraImages.push(...finalImg);
+
+        // Append to existing trip slide_images
+        if (extraImages.length > 0) {
+          const { data: currentTrip } = await supabase.from("trips").select("slide_images").eq("id", tripId).maybeSingle();
+          const existing: string[] = Array.isArray(currentTrip?.slide_images) ? currentTrip.slide_images : [];
+          await supabase.from("trips").update({ slide_images: [...existing, ...extraImages] }).eq("id", tripId);
+        }
+      } catch (err) {
+        console.error("City/final image fetch failed:", err);
+      }
+
       try {
         const summaryRes = await fetch("/api/ai/chat", {
           method: "POST",
