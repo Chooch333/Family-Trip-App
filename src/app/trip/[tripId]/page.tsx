@@ -841,6 +841,9 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
                       e.stopPropagation();
                       setAccommForm({
                         name: activeDayObj.accommodation_name || "",
+                        latitude: activeDayObj.accommodation_latitude || null,
+                        longitude: activeDayObj.accommodation_longitude || null,
+                        placeId: "",
                       });
                       setAccommEditing(true);
                     }}
