@@ -919,7 +919,7 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
                   {addingStop ? "Adding..." : "Add"}
                 </button>
                 <button
-                  onClick={() => { setShowAddStop(false); setNewStop({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "" }); }}
+                  onClick={() => { setShowAddStop(false); setNewStop({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "", latitude: null, longitude: null, placeId: "" }); }}
                   className="px-2 py-1 rounded-md text-gray-400 text-[11px] hover:text-gray-600 transition-colors"
                 >
                   Cancel
