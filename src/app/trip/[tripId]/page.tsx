@@ -80,7 +80,7 @@ export default function TripDashboard() {
   const [allTrips, setAllTrips] = useState<TripSwitcherItem[]>([]);
   // Accommodation
   const [accommEditing, setAccommEditing] = useState(false);
-  const [accommForm, setAccommForm] = useState({ name: "" });
+  const [accommForm, setAccommForm] = useState({ name: "", latitude: null as number | null, longitude: null as number | null, placeId: "" });
   const [accommSaving, setAccommSaving] = useState(false);
   const [selectedAccomm, setSelectedAccomm] = useState(false);
   const accommCardRef = useRef<HTMLDivElement>(null);
