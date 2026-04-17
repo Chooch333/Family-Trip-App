@@ -858,7 +858,7 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
             ) : (
               <div
                 onClick={() => {
-                  setAccommForm({ name: "" });
+                  setAccommForm({ name: "", latitude: null, longitude: null, placeId: "" });
                   setAccommEditing(true);
                 }}
                 className="flex items-center gap-2 cursor-pointer hover:border-emerald-400 transition-colors"
