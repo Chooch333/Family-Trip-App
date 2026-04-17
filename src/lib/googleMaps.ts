@@ -8,7 +8,7 @@ export function loadGoogleMapsScript(): Promise<void> {
   if (loadPromise) return loadPromise;
 
   // Already loaded (e.g. via another script tag)
-  if (typeof window !== "undefined" && window.google?.maps?.places) {
+  if (typeof window !== "undefined" && (window as any).google?.maps?.places) {
     return Promise.resolve();
   }
 
