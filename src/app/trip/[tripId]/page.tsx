@@ -377,10 +377,10 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
     setAccommSaving(true);
     const name = accommForm.name.trim() || null;
 
-    // Geocode
-    let lat: number | null = null;
-    let lng: number | null = null;
-    if (name) {
+    // Use Places coordinates if available, otherwise fall back to Nominatim
+    let lat: number | null = accommForm.latitude;
+    let lng: number | null = accommForm.longitude;
+    if (name && lat == null && lng == null) {
       const query = [name, trip?.destination].filter(Boolean).join(", ");
       try {
         const res = await fetch(`/api/geocode?${new URLSearchParams({ q: query })}`);
