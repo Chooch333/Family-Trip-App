@@ -29,7 +29,7 @@ interface TripSwitcherItem {
   role: "organizer" | "member";
 }
 
-// --- Leaflet Maps (dynamic, SSR-safe) ---
+// --- Maps (dynamic, SSR-safe) ---
 const TripMap = dynamic(() => import("./TripMap"), { ssr: false, loading: () => (
   <div className="flex-1 bg-gray-100 flex items-center justify-center">
     <p className="text-gray-400 text-xs">Loading map...</p>

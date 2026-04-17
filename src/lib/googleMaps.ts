@@ -1,7 +1,7 @@
 let loadPromise: Promise<void> | null = null;
 
 /**
- * Load the Google Maps JavaScript API with Places library (once).
+ * Load the Google Maps JavaScript API with Places and Marker libraries (once).
  * Safe to call multiple times — deduplicates automatically.
  */
 export function loadGoogleMapsScript(): Promise<void> {
@@ -19,7 +19,7 @@ export function loadGoogleMapsScript(): Promise<void> {
       return;
     }
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places,marker`;
     script.async = true;
     script.defer = true;
     script.onload = () => resolve();

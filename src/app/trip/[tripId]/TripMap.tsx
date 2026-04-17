@@ -1,9 +1,7 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
-import { MapContainer, TileLayer, CircleMarker, Marker, Tooltip, Polyline, useMap } from "react-leaflet";
-import L from "leaflet";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { loadGoogleMapsScript } from "@/lib/googleMaps";
 import type { Day, Stop } from "@/lib/database.types";
-import "leaflet/dist/leaflet.css";
 
 export interface AccommodationPin {
   name: string;
@@ -141,42 +139,34 @@ function clusterByTransit(dayStops: Stop[]): StopCluster[] {
   return clusters;
 }
 
-// Auto-fit bounds
-function FitBounds({ stops, padding, extraPoint }: { stops: Stop[]; padding?: number; extraPoint?: [number, number] | null }) {
-  const map = useMap();
-  const coords = useMemo(() => stops.filter(s => s.latitude && s.longitude), [stops]);
+const MAP_ID = "b37fd2d82b1f372e262e3a18";
 
-  useEffect(() => {
-    const bounds: [number, number][] = coords.map(s => [s.latitude!, s.longitude!]);
-    if (extraPoint) bounds.push(extraPoint);
-    if (bounds.length === 0) return;
-    if (bounds.length === 1) {
-      map.setView(bounds[0], 14, { animate: true });
-    } else {
-      map.fitBounds(bounds, { padding: [padding || 50, padding || 50], maxZoom: 15, animate: true });
-    }
-  }, [coords, map, padding, extraPoint]);
-
-  return null;
+// Build a circle SVG data URI for stop pins
+function makeCircleSvg(
+  radius: number,
+  fillColor: string,
+  strokeColor: string,
+  strokeWidth: number,
+  fillOpacity: number,
+): string {
+  const size = (radius + strokeWidth) * 2;
+  const cx = size / 2;
+  const cy = size / 2;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
+    `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${fillColor}" fill-opacity="${fillOpacity}" stroke="${strokeColor}" stroke-width="${strokeWidth}"/>` +
+    `</svg>`;
 }
 
-// Amber inverted teardrop icon for accommodation
-function makeAccommIcon(selected: boolean) {
+// Build accommodation teardrop SVG
+function makeAccommSvg(selected: boolean): string {
   const scale = selected ? 1.15 : 1;
   const w = Math.round(18 * scale);
   const h = Math.round(28 * scale);
   const ring = selected ? `<circle cx="9" cy="10" r="13" fill="none" stroke="rgba(133,79,11,0.3)" stroke-width="3"/>` : "";
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 18 28">${ring}<path d="M9 0C4 0 0 4 0 9c0 6.5 9 19 9 19s9-12.5 9-19c0-5-4-9-9-9z" fill="#854F0B" opacity="${selected ? 1 : 0.7}"/><circle cx="9" cy="9" r="4" fill="white" opacity="0.9"/></svg>`;
-  return L.divIcon({
-    html: svg,
-    className: "",
-    iconSize: [w, h],
-    iconAnchor: [w / 2, h],
-    tooltipAnchor: [0, -h],
-  });
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 18 28">${ring}<path d="M9 0C4 0 0 4 0 9c0 6.5 9 19 9 19s9-12.5 9-19c0-5-4-9-9-9z" fill="#854F0B" opacity="${selected ? 1 : 0.7}"/><circle cx="9" cy="9" r="4" fill="white" opacity="0.9"/></svg>`;
 }
 
-// Single map panel with pins + route line
+// Single Google Map panel
 function MapPanel({
   visibleStops,
   fitStops,
@@ -216,20 +206,242 @@ function MapPanel({
   accommodation?: AccommodationPin | null;
   onAccommodationClick?: () => void;
 }) {
-  const stopsWithCoords = useMemo(() => visibleStops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [visibleStops]);
-  const fitCoordStops = useMemo(() => fitStops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"), [fitStops]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const polylineRef = useRef<any>(null);
+  const infoWindowRef = useRef<any>(null);
+  const accommMarkerRef = useRef<any>(null);
+  const [loaded, setLoaded] = useState(false);
 
-  // Route line: active day stops in this panel, in sort order
+  const stopsWithCoords = useMemo(
+    () => visibleStops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"),
+    [visibleStops]
+  );
+  const fitCoordStops = useMemo(
+    () => fitStops.filter(s => s.latitude && s.longitude && s.stop_type !== "transit"),
+    [fitStops]
+  );
+
+  // Route line: active day stops in sort order
   const routePositions = useMemo(() => {
     return stopsWithCoords
       .filter(s => s.day_id === activeDayId)
       .sort((a, b) => a.sort_order - b.sort_order)
-      .map(s => [s.latitude!, s.longitude!] as [number, number]);
+      .map(s => ({ lat: s.latitude!, lng: s.longitude! }));
   }, [stopsWithCoords, activeDayId]);
 
-  if (fitCoordStops.length === 0) return null;
+  // Initialize map
+  useEffect(() => {
+    let cancelled = false;
+    loadGoogleMapsScript().then(() => {
+      if (cancelled || !containerRef.current) return;
+      const google = (window as any).google;
+      if (!google?.maps) return;
+      if (!mapRef.current) {
+        mapRef.current = new google.maps.Map(containerRef.current, {
+          mapId: MAP_ID,
+          center: { lat: 0, lng: 0 },
+          zoom: 2,
+          disableDefaultUI: false,
+          zoomControl: true,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+        });
+      }
+      setLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
-  const center: [number, number] = [fitCoordStops[0].latitude!, fitCoordStops[0].longitude!];
+  // Shared InfoWindow
+  useEffect(() => {
+    if (!loaded) return;
+    const google = (window as any).google;
+    if (!infoWindowRef.current) {
+      infoWindowRef.current = new google.maps.InfoWindow({ disableAutoPan: true });
+    }
+  }, [loaded]);
+
+  // Update markers
+  useEffect(() => {
+    if (!loaded || !mapRef.current) return;
+    const google = (window as any).google;
+    const map = mapRef.current;
+    const iw = infoWindowRef.current;
+
+    // Clear old markers
+    markersRef.current.forEach(m => { m.map = null; });
+    markersRef.current = [];
+
+    // Filter visible stops
+    const displayStops = stopsWithCoords.filter(
+      stop => showAllDays || stop.day_id === activeDayId
+    );
+
+    // Sort: inactive first, active on top
+    const sorted = [...displayStops].sort((a, b) => {
+      const aActive = a.day_id === activeDayId ? 1 : 0;
+      const bActive = b.day_id === activeDayId ? 1 : 0;
+      return aActive - bActive;
+    });
+
+    sorted.forEach((stop) => {
+      const dayIdx = dayIdxMap.get(stop.day_id) ?? 0;
+      const isActiveDay = stop.day_id === activeDayId;
+      const isPulsing = pulsingStop === stop.id;
+      const isSelected = selectedStop === stop.id;
+      const color = dayColors[dayIdx] || "#1D9E75";
+
+      const isOtherDay = showAllDays && !isActiveDay;
+      const radius = isOtherDay ? 8 : (isActiveDay ? 14 : 10);
+      const displayRadius = isPulsing ? 22 : (isSelected ? 18 : radius);
+      const fillOpacity = isOtherDay ? 0.7 : (isActiveDay ? 0.9 : 0.6);
+      const strokeWeight = isOtherDay ? 1 : (isActiveDay ? 2.5 : 1.5);
+
+      const fillColor = isSelected ? "#fff" : color;
+      const strokeColor = isSelected ? color : "#fff";
+      const sw = isSelected ? 4 : strokeWeight;
+      const fo = isPulsing ? 0.7 : (isSelected ? 0.95 : fillOpacity);
+
+      const svg = makeCircleSvg(displayRadius, fillColor, strokeColor, sw, fo);
+      const el = document.createElement("div");
+      el.innerHTML = svg;
+      el.style.cursor = "pointer";
+      if (isPulsing) {
+        el.style.animation = "gmap-pin-pulse 0.8s ease-in-out";
+      }
+
+      const marker = new google.maps.marker.AdvancedMarkerElement({
+        map,
+        position: { lat: stop.latitude!, lng: stop.longitude! },
+        content: el,
+        zIndex: isActiveDay ? 10 : 1,
+      });
+
+      marker.addListener("click", () => onPinClick(stop));
+
+      // Tooltip on hover
+      el.addEventListener("mouseenter", () => {
+        const dayLabel = days[dayIdx];
+        iw.setContent(
+          `<div style="font-size:11px;font-weight:500;padding:2px 0">${stop.name}</div>` +
+          `<div style="font-size:9px;color:#6b7280">Day ${dayLabel?.day_number ?? ""}${dayLabel?.title ? ` \u00b7 ${dayLabel.title}` : ""}</div>`
+        );
+        iw.open({ map, anchor: marker });
+      });
+      el.addEventListener("mouseleave", () => {
+        iw.close();
+      });
+
+      markersRef.current.push(marker);
+    });
+  }, [loaded, stopsWithCoords, activeDayId, showAllDays, pulsingStop, selectedStop, dayColors, dayIdxMap, days, onPinClick]);
+
+  // Update polyline
+  useEffect(() => {
+    if (!loaded || !mapRef.current) return;
+    const google = (window as any).google;
+
+    if (polylineRef.current) {
+      polylineRef.current.setMap(null);
+      polylineRef.current = null;
+    }
+
+    if (routePositions.length >= 2) {
+      polylineRef.current = new google.maps.Polyline({
+        path: routePositions,
+        strokeColor: routeColor,
+        strokeWeight: 2.5,
+        strokeOpacity: 0,
+        icons: [{
+          icon: {
+            path: "M 0,-1 0,1",
+            strokeOpacity: 0.4,
+            strokeColor: routeColor,
+            scale: 2.5,
+          },
+          offset: "0",
+          repeat: "14px",
+        }],
+        map: mapRef.current,
+      });
+    }
+  }, [loaded, routePositions, routeColor]);
+
+  // Accommodation marker
+  useEffect(() => {
+    if (!loaded || !mapRef.current) return;
+    const google = (window as any).google;
+
+    if (accommMarkerRef.current) {
+      accommMarkerRef.current.map = null;
+      accommMarkerRef.current = null;
+    }
+
+    if (accommodation) {
+      const svg = makeAccommSvg(accommodation.selected);
+      const el = document.createElement("div");
+      el.innerHTML = svg;
+      el.style.cursor = "pointer";
+
+      const marker = new google.maps.marker.AdvancedMarkerElement({
+        map: mapRef.current,
+        position: { lat: accommodation.latitude, lng: accommodation.longitude },
+        content: el,
+        zIndex: 20,
+      });
+
+      marker.addListener("click", () => onAccommodationClick?.());
+
+      const iw = infoWindowRef.current;
+      if (iw) {
+        el.addEventListener("mouseenter", () => {
+          iw.setContent(`<div style="font-size:11px;font-weight:500;padding:2px 0">${accommodation.name}</div>`);
+          iw.open({ map: mapRef.current, anchor: marker });
+        });
+        el.addEventListener("mouseleave", () => {
+          iw.close();
+        });
+      }
+
+      accommMarkerRef.current = marker;
+    }
+  }, [loaded, accommodation, onAccommodationClick]);
+
+  // Fit bounds
+  useEffect(() => {
+    if (!loaded || !mapRef.current) return;
+    const google = (window as any).google;
+
+    const bounds = new google.maps.LatLngBounds();
+    let count = 0;
+    let singlePos: any = null;
+
+    fitCoordStops.forEach(s => {
+      const pos = { lat: s.latitude!, lng: s.longitude! };
+      bounds.extend(pos);
+      singlePos = pos;
+      count++;
+    });
+
+    if (accommodation) {
+      bounds.extend({ lat: accommodation.latitude, lng: accommodation.longitude });
+      count++;
+    }
+
+    if (count === 0) return;
+
+    if (count === 1 && singlePos) {
+      mapRef.current.setCenter(singlePos);
+      mapRef.current.setZoom(14);
+    } else {
+      mapRef.current.fitBounds(bounds, fitPadding || 50);
+    }
+  }, [loaded, fitCoordStops, accommodation, fitPadding]);
+
+  if (fitCoordStops.length === 0) return null;
 
   return (
     <div className={className} style={{ ...style, display: "flex", flexDirection: "column" }}>
@@ -239,80 +451,7 @@ function MapPanel({
         </div>
       )}
       <div className="flex-1 min-h-0">
-      <MapContainer center={center} zoom={12} className="w-full h-full" style={{ zIndex: 0 }} zoomControl={false}>
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        <FitBounds stops={fitCoordStops} padding={fitPadding} extraPoint={accommodation ? [accommodation.latitude, accommodation.longitude] : null} />
-        {/* Route polyline for active day */}
-        {routePositions.length >= 2 && (
-          <Polyline
-            positions={routePositions}
-            pathOptions={{
-              color: routeColor,
-              weight: 2.5,
-              opacity: 0.4,
-              dashArray: "8, 6",
-            }}
-          />
-        )}
-        {/* Pins — render inactive first, active on top */}
-        {stopsWithCoords
-          .filter(stop => showAllDays || stop.day_id === activeDayId)
-          .sort((a, b) => {
-            const aActive = a.day_id === activeDayId ? 1 : 0;
-            const bActive = b.day_id === activeDayId ? 1 : 0;
-            return aActive - bActive;
-          })
-          .map(stop => {
-            const dayIdx = dayIdxMap.get(stop.day_id) ?? 0;
-            const isActiveDay = stop.day_id === activeDayId;
-            const isPulsing = pulsingStop === stop.id;
-            const isSelected = selectedStop === stop.id;
-            const color = dayColors[dayIdx] || "#1D9E75";
-
-            // In "All stops" mode, non-active day stops are smaller and faded
-            const isOtherDay = showAllDays && !isActiveDay;
-            const radius = isOtherDay ? 8 : (isActiveDay ? 14 : 10);
-            const displayRadius = isPulsing ? 22 : (isSelected ? 18 : radius);
-            const fillOpacity = isOtherDay ? 0.7 : (isActiveDay ? 0.9 : 0.6);
-            const strokeWeight = isOtherDay ? 1 : (isActiveDay ? 2.5 : 1.5);
-
-            return (
-              <CircleMarker
-                key={stop.id}
-                center={[stop.latitude!, stop.longitude!]}
-                radius={displayRadius}
-                pathOptions={{
-                  fillColor: isSelected ? "#fff" : color,
-                  color: isSelected ? color : "#fff",
-                  weight: isSelected ? 4 : strokeWeight,
-                  fillOpacity: isPulsing ? 0.7 : (isSelected ? 0.95 : fillOpacity),
-                  className: isPulsing ? "pin-pulse" : "",
-                }}
-                eventHandlers={{ click: () => onPinClick(stop) }}
-              >
-                <Tooltip direction="top" offset={[0, -radius]} opacity={0.95}>
-                  <div className="text-[11px] font-medium">{stop.name}</div>
-                  <div className="text-[9px] text-gray-500">Day {days[dayIdx]?.day_number}{days[dayIdx]?.title ? ` · ${days[dayIdx].title}` : ""}</div>
-                </Tooltip>
-              </CircleMarker>
-            );
-          })}
-        {/* Accommodation pin */}
-        {accommodation && (
-          <Marker
-            position={[accommodation.latitude, accommodation.longitude]}
-            icon={makeAccommIcon(accommodation.selected)}
-            eventHandlers={{ click: () => onAccommodationClick?.() }}
-          >
-            <Tooltip direction="top" offset={[0, -28]} opacity={0.95}>
-              <div className="text-[11px] font-medium">{accommodation.name}</div>
-            </Tooltip>
-          </Marker>
-        )}
-      </MapContainer>
+        <div ref={containerRef} className="w-full h-full" />
       </div>
     </div>
   );
@@ -352,12 +491,11 @@ export default function TripMap({ stops, days, activeDay, dayColors, pulsingStop
   return (
     <div className="w-full h-full relative flex flex-col">
       <style>{`
-        @keyframes map-pin-pulse {
-          0% { r: 14; opacity: 1; }
-          50% { r: 24; opacity: 0.5; }
-          100% { r: 14; opacity: 1; }
+        @keyframes gmap-pin-pulse {
+          0% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.6); opacity: 0.5; }
+          100% { transform: scale(1); opacity: 1; }
         }
-        .pin-pulse circle { animation: map-pin-pulse 0.8s ease-in-out; }
       `}</style>
 
       {/* Toggle button */}

@@ -13,8 +13,6 @@ body {
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #d1d1d1; border-radius: 3px; }
-.leaflet-container { font-family: inherit; height: 100%; width: 100%; }
-.leaflet-popup-content-wrapper { border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,0.12); }
 @supports (padding-top: env(safe-area-inset-top)) {
   .safe-area-top { padding-top: env(safe-area-inset-top); }
   .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }

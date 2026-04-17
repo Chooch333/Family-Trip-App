@@ -1,7 +1,6 @@
 "use client";
-import { useEffect, useMemo, useCallback } from "react";
-import { MapContainer, TileLayer, CircleMarker, Polyline, Tooltip, useMap } from "react-leaflet";
-import "leaflet/dist/leaflet.css";
+import { useEffect, useMemo, useCallback, useRef, useState } from "react";
+import { loadGoogleMapsScript } from "@/lib/googleMaps";
 
 export interface RegionalMapProps {
   routeCities: { name: string; lat: number; lng: number; dayIndices: number[] }[];
@@ -10,36 +9,33 @@ export interface RegionalMapProps {
   onSelectDay?: (dayIndex: number) => void;
 }
 
-function FitAllBounds({ points }: { points: { lat: number; lng: number }[] }) {
-  const map = useMap();
-  useEffect(() => {
-    if (points.length === 0) return;
-    const bounds = points.map(p => [p.lat, p.lng] as [number, number]);
-    if (bounds.length === 1) {
-      map.setView(bounds[0], 8, { animate: false });
-    } else {
-      map.fitBounds(bounds, { padding: [20, 20], maxZoom: 10, animate: false });
-    }
-  }, [points, map]);
-  return null;
-}
+const MAP_ID = "b37fd2d82b1f372e262e3a18";
 
-function DisableInteraction() {
-  const map = useMap();
-  useEffect(() => {
-    map.dragging.disable();
-    map.scrollWheelZoom.disable();
-    map.doubleClickZoom.disable();
-    map.touchZoom.disable();
-    map.boxZoom.disable();
-    map.keyboard.disable();
-  }, [map]);
-  return null;
+function makeCircleSvg(
+  radius: number,
+  fillColor: string,
+  strokeColor: string,
+  strokeWidth: number,
+  fillOpacity: number,
+): string {
+  const size = (radius + strokeWidth) * 2;
+  const cx = size / 2;
+  const cy = size / 2;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
+    `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="${fillColor}" fill-opacity="${fillOpacity}" stroke="${strokeColor}" stroke-width="${strokeWidth}"/>` +
+    `</svg>`;
 }
 
 export default function RegionalMap({ routeCities, activeCityIndex, activeDayColor, onSelectDay }: RegionalMapProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const polylineRef = useRef<any>(null);
+  const infoWindowRef = useRef<any>(null);
+  const [loaded, setLoaded] = useState(false);
+
   const routePositions = useMemo(
-    () => routeCities.map(c => [c.lat, c.lng] as [number, number]),
+    () => routeCities.map(c => ({ lat: c.lat, lng: c.lng })),
     [routeCities]
   );
 
@@ -51,56 +47,132 @@ export default function RegionalMap({ routeCities, activeCityIndex, activeDayCol
     }
   }, [routeCities, onSelectDay]);
 
-  if (routeCities.length === 0) return null;
+  // Initialize map
+  useEffect(() => {
+    let cancelled = false;
+    loadGoogleMapsScript().then(() => {
+      if (cancelled || !containerRef.current) return;
+      const google = (window as any).google;
+      if (!google?.maps) return;
+      if (!mapRef.current) {
+        mapRef.current = new google.maps.Map(containerRef.current, {
+          mapId: MAP_ID,
+          center: { lat: 0, lng: 0 },
+          zoom: 6,
+          disableDefaultUI: true,
+          gestureHandling: "none",
+          keyboardShortcuts: false,
+        });
+      }
+      infoWindowRef.current = new google.maps.InfoWindow({ disableAutoPan: true });
+      setLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
-  const center: [number, number] = [routeCities[0].lat, routeCities[0].lng];
+  // Fit bounds
+  useEffect(() => {
+    if (!loaded || !mapRef.current || routeCities.length === 0) return;
+    const google = (window as any).google;
+    if (routeCities.length === 1) {
+      mapRef.current.setCenter({ lat: routeCities[0].lat, lng: routeCities[0].lng });
+      mapRef.current.setZoom(8);
+    } else {
+      const bounds = new google.maps.LatLngBounds();
+      routeCities.forEach(c => bounds.extend({ lat: c.lat, lng: c.lng }));
+      mapRef.current.fitBounds(bounds, 20);
+      // Enforce maxZoom 10
+      const listener = google.maps.event.addListenerOnce(mapRef.current, "idle", () => {
+        if (mapRef.current.getZoom() > 10) mapRef.current.setZoom(10);
+      });
+    }
+  }, [loaded, routeCities]);
+
+  // Update polyline
+  useEffect(() => {
+    if (!loaded || !mapRef.current) return;
+    const google = (window as any).google;
+
+    if (polylineRef.current) {
+      polylineRef.current.setMap(null);
+      polylineRef.current = null;
+    }
+
+    if (routePositions.length >= 2) {
+      polylineRef.current = new google.maps.Polyline({
+        path: routePositions,
+        strokeColor: "#94a3b8",
+        strokeWeight: 2,
+        strokeOpacity: 0,
+        icons: [{
+          icon: {
+            path: "M 0,-1 0,1",
+            strokeOpacity: 0.6,
+            strokeColor: "#94a3b8",
+            scale: 2,
+          },
+          offset: "0",
+          repeat: "11px",
+        }],
+        map: mapRef.current,
+      });
+    }
+  }, [loaded, routePositions]);
+
+  // Update markers
+  useEffect(() => {
+    if (!loaded || !mapRef.current) return;
+    const google = (window as any).google;
+    const map = mapRef.current;
+    const iw = infoWindowRef.current;
+
+    // Clear old
+    markersRef.current.forEach(m => { m.map = null; });
+    markersRef.current = [];
+
+    routeCities.forEach((city, i) => {
+      const isActive = i === activeCityIndex;
+      const radius = isActive ? 8 : 5;
+      const fillColor = isActive ? activeDayColor : "transparent";
+      const strokeColor = isActive ? activeDayColor : "#64748b";
+      const strokeWidth = isActive ? 2.5 : 1.5;
+      const fillOpacity = isActive ? 0.9 : 1;
+
+      const svg = makeCircleSvg(radius, fillColor, strokeColor, strokeWidth, fillOpacity);
+      const el = document.createElement("div");
+      el.innerHTML = svg;
+      el.style.cursor = "pointer";
+      el.style.transition = "transform 0.15s ease";
+
+      const marker = new google.maps.marker.AdvancedMarkerElement({
+        map,
+        position: { lat: city.lat, lng: city.lng },
+        content: el,
+      });
+
+      marker.addListener("click", () => handleCityClick(i));
+
+      el.addEventListener("mouseenter", () => {
+        if (!isActive) el.style.transform = "scale(1.6)";
+        if (iw) {
+          iw.setContent(`<span style="font-size:10px;font-weight:500">${city.name}</span>`);
+          iw.open({ map, anchor: marker });
+        }
+      });
+      el.addEventListener("mouseleave", () => {
+        el.style.transform = "";
+        if (iw) iw.close();
+      });
+
+      markersRef.current.push(marker);
+    });
+  }, [loaded, routeCities, activeCityIndex, activeDayColor, handleCityClick]);
+
+  if (routeCities.length === 0) return null;
 
   return (
     <div className="w-full flex-shrink-0" style={{ height: 209 }}>
-      <MapContainer center={center} zoom={6} className="w-full h-full" style={{ zIndex: 0 }} zoomControl={false} attributionControl={false}>
-        <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>'
-        />
-        <FitAllBounds points={routeCities} />
-        <DisableInteraction />
-        {routePositions.length >= 2 && (
-          <Polyline
-            positions={routePositions}
-            pathOptions={{
-              color: "#94a3b8",
-              weight: 2,
-              opacity: 0.6,
-              dashArray: "6, 5",
-            }}
-          />
-        )}
-        {routeCities.map((city, i) => {
-          const isActive = i === activeCityIndex;
-          return (
-            <CircleMarker
-              key={`${city.name}-${i}`}
-              center={[city.lat, city.lng]}
-              radius={isActive ? 8 : 5}
-              pathOptions={{
-                fillColor: isActive ? activeDayColor : "transparent",
-                color: isActive ? activeDayColor : "#64748b",
-                weight: isActive ? 2.5 : 1.5,
-                fillOpacity: isActive ? 0.9 : 1,
-              }}
-              eventHandlers={{
-                click: () => handleCityClick(i),
-                mouseover: (e) => { e.target.setRadius(8); e.target.getElement()?.style.setProperty("cursor", "pointer"); },
-                mouseout: (e) => { e.target.setRadius(isActive ? 8 : 5); },
-              }}
-            >
-              <Tooltip direction="top" offset={[0, -6]} opacity={0.9} permanent={false}>
-                <span className="text-[10px] font-medium">{city.name}</span>
-              </Tooltip>
-            </CircleMarker>
-          );
-        })}
-      </MapContainer>
+      <div ref={containerRef} className="w-full h-full" />
     </div>
   );
 }
