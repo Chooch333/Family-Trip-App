@@ -792,10 +792,10 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
           <div className="px-3 py-2" ref={accommCardRef}>
             {accommEditing ? (
               <div style={{ border: "1.5px dashed #d1d5db", borderRadius: 8, padding: "10px 12px" }}>
-                <input
-                  type="text"
+                <PlacesAutocomplete
                   value={accommForm.name}
-                  onChange={e => setAccommForm(f => ({ ...f, name: e.target.value }))}
+                  onChange={v => setAccommForm(f => ({ ...f, name: v, latitude: null, longitude: null, placeId: "" }))}
+                  onPlaceSelect={place => setAccommForm({ name: place.name, latitude: place.latitude, longitude: place.longitude, placeId: place.placeId })}
                   placeholder="Hotel or Airbnb name"
                   autoFocus
                   className="w-full text-[12px] px-2.5 rounded-md border border-gray-200 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-200 focus:border-emerald-400"
