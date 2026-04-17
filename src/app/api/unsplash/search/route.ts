@@ -19,8 +19,8 @@ export async function GET(req: NextRequest) {
   const excludeSet = new Set(exclude.split(",").filter(Boolean));
 
   try {
-    // Over-fetch: request 3x what we need so we can skip duplicates and pick quality
-    const fetchCount = Math.min(Math.max(count * 3, 6), 30);
+    // Over-fetch: request 4x what we need so we can skip duplicates and pick quality
+    const fetchCount = Math.min(Math.max(count * 4, 8), 30);
 
     const res = await fetch(
       `${UNSPLASH_BASE}?${new URLSearchParams({
