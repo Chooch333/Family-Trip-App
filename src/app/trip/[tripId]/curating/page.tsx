@@ -297,24 +297,43 @@ export default function CuratingPage() {
           for (const dayData of daysArr) {
             const color = dayColors[(dayData.day_number - 1) % dayColors.length];
 
-            // Fetch slide images per-stop: search individually for top 2 visual stops, take #1 each
+            // Fetch slide images per-stop: search individually for top visual elements, take #1 each
             const dayStops = dayData.stops || [];
             const dayCity = dayData.title.split(/[—\-,]/)[0].trim();
 
-            // Build smart queries: skip restaurant/food names (bad Unsplash results),
-            // prefer landmarks, neighborhoods, and natural features
+            // Extract searchable keywords from the day title (e.g. "Greenwich Village & SoHo" → ["Greenwich Village", "SoHo"])
+            const titleKeywords = dayData.title
+              .split(/[—\-,&]/)
+              .map((s: string) => s.trim())
+              .filter((s: string) => s.length > 2 && !/^day\s*\d/i.test(s));
+
+            // Build smart queries: anchor stops first, then title keywords, skip restaurant names
             const visualStops = dayStops
               .filter(s => s.stop_type !== "transit" && s.stop_type !== "food")
               .sort((a, b) => (b.is_anchor ? 1 : 0) - (a.is_anchor ? 1 : 0));
             const foodStops = dayStops.filter(s => s.stop_type === "food");
 
-            // For non-food stops: use stop name + city
-            // For food stops: use neighborhood/city instead of restaurant name
             const stopQueries: string[] = [];
+
+            // Priority 1: anchor non-food stops by name + city
             for (const s of visualStops.slice(0, 2)) {
               stopQueries.push(`${s.name} ${dayCity || dest}`);
             }
-            // If we don't have 2 visual stops, add city-level queries
+
+            // Priority 2: title keywords (neighborhoods, landmarks mentioned in the title)
+            if (stopQueries.length < 3) {
+              for (const kw of titleKeywords) {
+                if (stopQueries.length >= 3) break;
+                // Skip if we already have a query containing this keyword
+                const kwLower = kw.toLowerCase();
+                const alreadyCovered = stopQueries.some(q => q.toLowerCase().includes(kwLower));
+                if (!alreadyCovered) {
+                  stopQueries.push(`${kw} ${dest} travel`);
+                }
+              }
+            }
+
+            // Priority 3: fallback for days with few visual stops
             if (stopQueries.length < 2) {
               if (dayCity && dayCity.toLowerCase() !== dest.toLowerCase()) {
                 stopQueries.push(`${dayCity} landmark travel photography`);
@@ -322,13 +341,14 @@ export default function CuratingPage() {
                 stopQueries.push(`${dest} scenic travel`);
               }
             }
-            // If only food stops exist on this day, use neighborhood + "dining district"
+
+            // Priority 4: food-only days — use neighborhood atmosphere
             if (stopQueries.length === 0 && foodStops.length > 0) {
               stopQueries.push(`${dayCity || dest} dining district street scene`);
               stopQueries.push(`${dayCity || dest} food market atmosphere`);
             }
 
-            const slideImages = await fetchOnePerQuery(stopQueries.slice(0, 2), tripId);
+            const slideImages = await fetchOnePerQuery(stopQueries.slice(0, 3), tripId);
 
             const { data: dayRow } = await supabase.from("days").insert({
               trip_id: tripId,
