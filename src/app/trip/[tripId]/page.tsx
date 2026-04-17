@@ -353,14 +353,16 @@ Stops on Day ${ad.day_number}:\n${adStops || "  (no stops yet)"}${accommContext}
       description: newStop.description.trim() || null, start_time: newStop.start_time || null,
       duration_minutes: newStop.duration_minutes,
       cost_estimate: newStop.cost_estimate ? parseFloat(newStop.cost_estimate) : null,
+      latitude: newStop.latitude || null,
+      longitude: newStop.longitude || null,
       sort_order: nextOrder, created_by: currentMember?.id || null,
     }).select().single();
     if (data && !error) {
       const stop = data as Stop;
       setStops(prev => [...prev, stop]);
-      setNewStop({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "" });
+      setNewStop({ name: "", description: "", start_time: "", duration_minutes: 30, cost_estimate: "", latitude: null, longitude: null, placeId: "" });
       setShowAddStop(false);
-      // Geocode in background — update stop coordinates and refresh state
+      // Only geocode if Places didn't provide coordinates
       if (!stop.latitude && !stop.longitude && stop.stop_type !== "transit") {
         geocodeAndUpdateStop(stop.id, stop.name, trip?.destination || undefined).then(coords => {
           if (coords) setStops(prev => prev.map(s => s.id === stop.id ? { ...s, ...coords } : s));
