@@ -2,6 +2,7 @@
 import { useEffect, useCallback, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { generateDayColors } from "@/lib/tripHelpers";
+import { isMultiCityTrip } from "@/lib/routeCities";
 import type { Trip, Day, Stop } from "@/lib/database.types";
 
 // ─────────────────────────────────────────────────────────────────────────────
