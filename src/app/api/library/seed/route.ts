@@ -1,0 +1,129 @@
+import { NextRequest, NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase";
+
+export const maxDuration = 60;
+
+const UNSPLASH_BASE = "https://api.unsplash.com/search/photos";
+
+// ── Shelf definitions: key → search queries (top result of each becomes a candidate) ──
+
+const REGION_QUERIES: Record<string, string[]> = {
+  "midwest-river": ["mississippi river bend aerial golden hour", "midwest river town waterfront", "river barge midwest sunset"],
+  "midwest-farmland": ["midwest farmland golden hour aerial", "corn field sunset rural road", "red barn farmland landscape"],
+  "great-lakes": ["great lakes shoreline lighthouse", "lake michigan beach dunes", "great lakes pier sunset"],
+  "plains": ["great plains prairie big sky", "wheat field horizon sunset", "plains storm clouds landscape"],
+  "mountain-west": ["rocky mountains alpine lake", "mountain valley sunrise mist", "snowcapped peaks wildflower meadow"],
+  "desert-southwest": ["desert southwest red rock formations", "saguaro cactus sunset arizona", "southwest canyon golden light"],
+  "southeast": ["live oak trees spanish moss", "southern small town main street", "blue ridge mountains overlook"],
+  "new-england": ["new england coastal village harbor", "new england fall foliage country road", "lighthouse rocky coast maine"],
+  "pacific-northwest": ["pacific northwest forest mist", "oregon coast sea stacks", "evergreen mountains lake reflection"],
+  "gulf-coast": ["gulf coast beach sunset", "white sand beach gulf shores", "bayou cypress trees water"],
+};
+
+const CATEGORY_QUERIES: Record<string, string[]> = {
+  "coffee": ["latte art coffee shop wooden table", "cozy coffee shop interior warm light", "pour over coffee cafe counter"],
+  "meal": ["restaurant plated dinner warm light", "family style dinner table restaurant", "rustic restaurant meal spread"],
+  "bakery": ["bakery pastry display case", "fresh croissants bakery morning", "artisan bread bakery shelves"],
+  "park-trail": ["forest hiking trail dappled sunlight", "park path trees walking", "nature trail boardwalk wetland"],
+  "museum": ["museum gallery interior light", "art museum grand hall", "natural history museum exhibit"],
+  "water": ["lakeside wooden dock morning calm", "riverfront walkway water", "calm lake reflection trees"],
+  "main-street": ["small town main street america", "historic downtown storefronts brick", "main street evening warm lights"],
+  "shop": ["boutique shop interior shelves", "local bookstore cozy shelves", "general store storefront"],
+  "brewery": ["craft brewery taproom interior", "beer flight wooden board brewery", "brewery steel tanks warm light"],
+};
+
+const PRIDE_QUERIES: Record<string, string[]> = {
+  // States — welcome signs + flags flying in real scenes (never full-bleed graphic flags)
+  "illinois": ["welcome to Illinois sign", "Illinois state flag flying flagpole"],
+  "wisconsin": ["welcome to Wisconsin sign", "Wisconsin state flag flying flagpole"],
+  "michigan": ["welcome to Michigan sign", "Michigan state flag flying flagpole"],
+  "ohio": ["welcome to Ohio sign", "Ohio state flag flying flagpole"],
+  "indiana": ["welcome to Indiana sign", "Indiana state flag flying flagpole"],
+  "missouri": ["welcome to Missouri sign", "Missouri state flag flying flagpole"],
+  "iowa": ["welcome to Iowa sign", "Iowa state flag flying flagpole"],
+  "minnesota": ["welcome to Minnesota sign", "Minnesota state flag flying flagpole"],
+  "texas": ["welcome to Texas sign", "Texas state flag flying flagpole"],
+  "california": ["welcome to California sign", "California state flag flying flagpole"],
+  "florida": ["welcome to Florida sign", "Florida state flag flying flagpole"],
+  "new-york": ["welcome to New York state sign", "New York state flag flying flagpole"],
+  // Nations — same concept carried over
+  "usa": ["american flag flying front porch", "welcome to United States border sign"],
+  "canada": ["canada flag flying flagpole mountains", "welcome to Canada border sign"],
+  "mexico": ["mexico flag flying zocalo", "welcome to Mexico border sign"],
+  "france": ["france flag flying building paris", "french tricolor flag flying"],
+  "italy": ["italy flag flying building", "italian flag flying piazza"],
+  "japan": ["japan flag flying temple", "japanese flag flying building"],
+};
+
+const KIND_MAP: Record<string, Record<string, string[]>> = {
+  region: REGION_QUERIES,
+  category: CATEGORY_QUERIES,
+  pride: PRIDE_QUERIES,
+};
+
+// Seeds photo_library with UNAPPROVED candidates for review in the photo widget.
+// Idempotent: any key that already has rows is skipped, so re-running is safe.
+// Batched by kind to stay inside the Unsplash hourly quota.
+export async function GET(req: NextRequest) {
+  const kind = req.nextUrl.searchParams.get("kind") || "";
+  const keysFilter = (req.nextUrl.searchParams.get("keys") || "").split(",").filter(Boolean);
+
+  const queryMap = KIND_MAP[kind];
+  if (!queryMap) {
+    return NextResponse.json({ error: "kind must be one of: region, category, pride" }, { status: 400 });
+  }
+
+  const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+  if (!accessKey) {
+    return NextResponse.json({ error: "UNSPLASH_ACCESS_KEY not configured" }, { status: 500 });
+  }
+
+  const seeded: Record<string, number> = {};
+  const skipped: string[] = [];
+  let rateLimitRemaining = -1;
+  let quotaExhausted = false;
+
+  const keys = Object.keys(queryMap).filter(k => keysFilter.length === 0 || keysFilter.includes(k));
+
+  for (const key of keys) {
+    if (quotaExhausted) break;
+
+    // Idempotency: skip shelves that already have candidates
+    const { count } = await supabase.from("photo_library")
+      .select("id", { count: "exact", head: true })
+      .eq("kind", kind).eq("key", key);
+    if (count && count > 0) { skipped.push(key); continue; }
+
+    const queries = queryMap[key];
+    const results = await Promise.all(queries.map(async (q) => {
+      try {
+        const res = await fetch(`${UNSPLASH_BASE}?${new URLSearchParams({
+          query: q, per_page: "5", orientation: "landscape", content_filter: "high",
+        })}`, { headers: { Authorization: `Client-ID ${accessKey}`, "Accept-Version": "v1" } });
+        const remaining = parseInt(res.headers.get("X-Ratelimit-Remaining") || "-1", 10);
+        if (remaining >= 0) rateLimitRemaining = remaining;
+        if (res.status === 403 || res.status === 429) { quotaExhausted = true; return null; }
+        if (!res.ok) return null;
+        const data = await res.json();
+        const photo = (data.results || [])[0];
+        if (!photo) return null;
+        return {
+          url: photo.urls?.regular || photo.urls?.full || "",
+          attribution: photo.user?.name ? `${photo.user.name} / Unsplash` : "Unsplash",
+        };
+      } catch { return null; }
+    }));
+
+    const rows = results
+      .filter((r): r is { url: string; attribution: string } => !!r && !!r.url)
+      .filter((r, i, arr) => arr.findIndex(x => x.url === r.url) === i) // dedupe within key
+      .map(r => ({ kind, key, url: r.url, source: "unsplash", attribution: r.attribution, approved: false }));
+
+    if (rows.length > 0) {
+      const { error } = await supabase.from("photo_library").insert(rows);
+      if (!error) seeded[key] = rows.length;
+    }
+  }
+
+  return NextResponse.json({ kind, seeded, skipped, rateLimitRemaining, quotaExhausted });
+}
