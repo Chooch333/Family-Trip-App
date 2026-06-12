@@ -263,7 +263,8 @@ export default function CuratingPage() {
         ];
 
         if (allImages.length > 0) {
-          await supabase.from("trips").update({ slide_images: allImages }).eq("id", tripId);
+          // F-076: keyed slide image groups — each slide type reads its own photos by name, not position
+          await supabase.from("trips").update({ slide_images: { hype: allImages, cities: {}, final: [] } }).eq("id", tripId);
         }
         setHypeReady(true);
       } catch (err) {
