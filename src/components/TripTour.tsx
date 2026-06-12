@@ -356,7 +356,7 @@ function buildSlides(
         headline: trip.name,
         body: (trip as Trip & { trip_summary?: string }).trip_summary || `That's the shape of it. Ready to make it yours?`,
         buttons: { primary: "Explore my trip" },
-        images: nextTripImages(2),
+        images: (keyedImages && keyedImages.final && keyedImages.final.length >= 1) ? keyedImages.final : nextTripImages(2),
       });
     }
   }
