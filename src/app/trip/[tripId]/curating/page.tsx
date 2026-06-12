@@ -264,6 +264,36 @@ export default function CuratingPage() {
           ...gemsImgs.slice(0, 5),
         ];
 
+        // Photo-thin destination? Top up from the curated regional mood shelf (the Peoria fix).
+        // One tiny classification call, only when search came back thin.
+        if (allImages.length < 8) {
+          try {
+            const regionRes = await fetch("/api/ai/chat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                messages: [{ role: "user", content: `Classify the dominant landscape of a trip to "${dest}" as exactly one of: midwest-river, midwest-farmland, great-lakes, plains, mountain-west, desert-southwest, southeast, new-england, pacific-northwest, gulf-coast, international, other. Reply with only the key, nothing else.` }],
+                systemPrompt: "You classify US trip destinations into landscape regions. Reply with only the single requested key.",
+                max_tokens: 16,
+              }),
+            });
+            const regionData = await regionRes.json();
+            const regionBlocks: Array<{ type: string; text?: string }> = Array.isArray(regionData.content) ? regionData.content : [];
+            const regionKey = regionBlocks.filter(b => b.type === "text").map(b => b.text || "").join("").trim().toLowerCase();
+            if (regionKey && regionKey !== "other" && regionKey !== "international") {
+              const { data: shelf } = await supabase.from("photo_library").select("url")
+                .eq("kind", "region").eq("key", regionKey).eq("approved", true).limit(15);
+              for (const shelfImg of shelf || []) {
+                if (allImages.length >= 15) break;
+                if (!allImages.includes(shelfImg.url) && !usedUrls.has(shelfImg.url)) {
+                  allImages.push(shelfImg.url);
+                  usedUrls.add(shelfImg.url);
+                }
+              }
+            }
+          } catch { /* proceed with what we have */ }
+        }
+
         if (allImages.length > 0) {
           // F-076: keyed slide image groups — each slide type reads its own photos by name, not position
           await supabase.from("trips").update({ slide_images: { hype: allImages, cities: {}, final: [] } }).eq("id", tripId);
