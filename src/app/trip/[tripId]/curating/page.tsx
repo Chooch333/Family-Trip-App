@@ -448,7 +448,8 @@ export default function CuratingPage() {
           }
         }
 
-        const extraImages: string[] = [];
+        // F-076: keyed slide image groups — city and final photos stored under their own keys
+        const cityMap: Record<string, string[]> = {};
 
         // City arrival images — 2 per distinct city (only matters for multi-city trips)
         if (cityList.length >= 2) {
@@ -457,7 +458,7 @@ export default function CuratingPage() {
               `${city} skyline travel panorama`,
               `${city} iconic landmark aerial`,
             ], tripId);
-            extraImages.push(...cityImgs);
+            if (cityImgs.length > 0) cityMap[city] = cityImgs;
           }
         }
 
@@ -465,13 +466,13 @@ export default function CuratingPage() {
         const finalImg = await fetchOnePerQuery([
           `${dest} panorama sunset skyline`,
         ], tripId);
-        extraImages.push(...finalImg);
 
-        // Append to existing trip slide_images
-        if (extraImages.length > 0) {
+        // Merge into keyed slide_images (legacy flat arrays become the hype group)
+        if (Object.keys(cityMap).length > 0 || finalImg.length > 0) {
           const { data: currentTrip } = await supabase.from("trips").select("slide_images").eq("id", tripId).maybeSingle();
-          const existing: string[] = Array.isArray(currentTrip?.slide_images) ? currentTrip.slide_images : [];
-          await supabase.from("trips").update({ slide_images: [...existing, ...extraImages] }).eq("id", tripId);
+          const cur = currentTrip?.slide_images;
+          const hype: string[] = Array.isArray(cur) ? cur : (cur && typeof cur === "object" ? ((cur as { hype?: string[] }).hype || []) : []);
+          await supabase.from("trips").update({ slide_images: { hype, cities: cityMap, final: finalImg } }).eq("id", tripId);
         }
       } catch (err) {
         console.error("City/final image fetch failed:", err);
