@@ -249,9 +249,17 @@ function buildSlides(
   const slides: Slide[] = [];
   let gradientIdx = 0;
   let cardIdx = 0;
-  const tripImages: string[] = Array.isArray((trip as any).slide_images) ? (trip as any).slide_images : [];
+  const rawSlideImages = (trip as any).slide_images;
+  // F-076: keyed slide image groups — new trips store { hype, cities, final }; legacy trips store a flat array
+  const keyedImages = rawSlideImages && typeof rawSlideImages === "object" && !Array.isArray(rawSlideImages)
+    ? (rawSlideImages as { hype?: string[]; cities?: Record<string, string[]>; final?: string[] })
+    : null;
+  const tripImages: string[] = keyedImages
+    ? (keyedImages.hype || [])
+    : (Array.isArray(rawSlideImages) ? rawSlideImages : []);
 
   // Rolling offset through trip image pool — each slide gets next unique set, no repeats
+  // (keyed trips: the pool is the hype group — hype slides consume the first 9, day-card fallbacks use the spares)
   let tripImgOffset = 0;
   function nextTripImages(n: number): string[] | undefined {
     if (tripImages.length < 2) return undefined;
