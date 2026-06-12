@@ -316,7 +316,7 @@ function buildSlides(
         label: arrivalLabel, labelColor: "#D85A30",
         headline: city.city,
         body: cityDays[0]?.narrative || `${cityDays.length} day${cityDays.length > 1 ? "s" : ""} in ${city.city}.`,
-        images: nextTripImages(2),
+        images: (keyedImages && keyedImages.cities && keyedImages.cities[city.city] && keyedImages.cities[city.city].length >= 1) ? keyedImages.cities[city.city] : nextTripImages(2),
       });
     }
     for (const day of cityDays) {
