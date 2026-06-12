@@ -383,7 +383,27 @@ export default function CuratingPage() {
                   created_by: m!.id,
                 };
               });
-              await supabase.from("stops").insert(stopRows);
+              const { data: insertedStops } = await supabase.from("stops").insert(stopRows).select();
+              // F-075: per-stop photo seeding — one real Google Places photo of each actual place.
+              // Fire-and-forget: generation speed is unaffected; a failed fetch just leaves photos empty.
+              // Places (not Unsplash) per F-083 — venue photos beat search-lottery editorial shots for stops.
+              if (insertedStops && insertedStops.length > 0) {
+                (async () => {
+                  for (const row of insertedStops as Stop[]) {
+                    if (row.stop_type === "transit") continue;
+                    try {
+                      const res = await fetch(`/api/places/photos?${new URLSearchParams({ query: `${row.name} ${dayCity || dest}`, count: "1", tripId })}`);
+                      if (res.ok) {
+                        const d = await res.json();
+                        const url: string | undefined = (d.images || [])[0];
+                        if (url) {
+                          await supabase.from("stops").update({ photos: [{ url }] }).eq("id", row.id);
+                        }
+                      }
+                    } catch { /* leave photos empty */ }
+                  }
+                })();
+              }
             }
 
             summaries.push({
