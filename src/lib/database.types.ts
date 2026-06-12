@@ -12,6 +12,7 @@ export type Database = {
           destination: string | null; duration: string | null; group_type: string | null;
           group_detail: string | null; interests: string | null; extra_notes: string | null; travel_dates: string | null; cover_image_url: string | null;
           trip_summary: string | null;
+          slide_images: string[] | null;
         };
         Insert: Record<string, unknown>;
         Update: Record<string, unknown>;
@@ -47,6 +48,7 @@ export type Database = {
           accommodation_name: string | null; accommodation_address: string | null;
           accommodation_latitude: number | null; accommodation_longitude: number | null;
           accommodation_notes: string | null;
+          slide_images: string[] | null;
         };
         Insert: Record<string, unknown>;
         Update: Record<string, unknown>;
