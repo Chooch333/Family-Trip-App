@@ -103,7 +103,7 @@ export default function TripDashboard() {
 
 When the family describes their trip, build them something that feels like it was made by someone who's personally invested in them having an incredible time. Not a generic list — a real trip, with opinions.
 
-You MUST respond with a friendly, personality-rich message (in your Co-Pilot voice — warm, specific, opinionated) followed by a JSON code block containing the itinerary. The JSON must be wrapped in \`\`\`json and \`\`\` markers.
+You MUST respond with a friendly, personality-rich message (in your curator voice — warm, specific, opinionated) followed by a JSON code block containing the itinerary. The JSON must be wrapped in \`\`\`json and \`\`\` markers.
 
 The JSON format must be exactly:
 {
