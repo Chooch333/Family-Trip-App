@@ -64,6 +64,7 @@ STRUCTURAL RULES:
 - Every stop needs a description AND an ai_note
 - Every stop needs an is_anchor boolean: true for the 1-3 stops per day you're most confident about — the non-negotiables, the reason that day exists. These are stops you'd fight to keep if the day got trimmed. Set false for everything else (flexible — good pick but open to swapping).
 - Every day needs a narrative AND a reasoning field
+- Every stop needs a photo_category: the best generic photo subject for this kind of stop. Exactly one of: coffee, meal, bakery, park-trail, museum, water, main-street, shop, brewery
 ${trip.travel_dates ? `- Travel dates: ${trip.travel_dates}. Factor in weather, seasonal closures, holidays, local events, and what the destination actually feels like at that time of year.` : ""}`;
 }
 
