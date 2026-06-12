@@ -206,7 +206,7 @@ function buildSystemPrompt(trip: Trip, days: Day[], stops: Stop[], extraContext?
   const dest = trip.destination || trip.name;
   const group = buildGroupDescription(trip);
 
-  let prompt = CO_PILOT_PERSONALITY;
+  let prompt = CURATOR_PERSONALITY;
 
   prompt += `\n\n═══ THIS TRIP ═══
 Destination: ${dest}
