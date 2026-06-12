@@ -65,13 +65,14 @@ const KIND_MAP: Record<string, Record<string, string[]>> = {
 // Idempotent: any key that already has rows is skipped, so re-running is safe.
 // Batched by kind to stay inside the Unsplash hourly quota.
 export async function GET(req: NextRequest) {
-  const kind = req.nextUrl.searchParams.get("kind") || "";
+  const kindParam = req.nextUrl.searchParams.get("kind") || "";
   const keysFilter = (req.nextUrl.searchParams.get("keys") || "").split(",").filter(Boolean);
 
-  const queryMap = KIND_MAP[kind];
-  if (!queryMap) {
+  if (kindParam !== "region" && kindParam !== "category" && kindParam !== "pride") {
     return NextResponse.json({ error: "kind must be one of: region, category, pride" }, { status: 400 });
   }
+  const kind = kindParam; // narrowed to "region" | "category" | "pride"
+  const queryMap = KIND_MAP[kind];
 
   const accessKey = process.env.UNSPLASH_ACCESS_KEY;
   if (!accessKey) {
