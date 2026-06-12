@@ -462,7 +462,7 @@ export default function CuratingPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: [{ role: "user", content: `Based on the itinerary you just built across ${total} days for ${group} going to ${dest}, write an exciting 3-4 sentence trip summary paragraph. It should make them feel the trip before they see the details — an emotional preview, not a table of contents.\n\nDays:\n${summaries.map(s => `Day ${s.day_number} — ${s.title}`).join("\n")}` }],
-            systemPrompt: "You are the trip's Co-Pilot. Write short, vivid, opinionated trip summary paragraphs. Respond with just the paragraph text — no preamble, no JSON, no quotes.",
+            systemPrompt: "You are the trip's curator. Write short, vivid, opinionated trip summary paragraphs. Respond with just the paragraph text — no preamble, no JSON, no quotes.",
             max_tokens: 512,
           }),
         });
