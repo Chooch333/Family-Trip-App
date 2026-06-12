@@ -85,6 +85,7 @@ interface StopData {
   duration_minutes?: number;
   cost_estimate?: number;
   stop_type?: string;
+  photo_category?: string;
 }
 
 interface DayData {
