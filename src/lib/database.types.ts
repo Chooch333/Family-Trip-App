@@ -124,6 +124,21 @@ export type Database = {
         Update: Record<string, unknown>;
         Relationships: [];
       };
+      photo_library: {
+        Row: {
+          id: string;
+          kind: "place" | "region" | "category" | "pride";
+          key: string;
+          url: string;
+          source: string | null;
+          attribution: string | null;
+          approved: boolean;
+          created_at: string;
+        };
+        Insert: Record<string, unknown>;
+        Update: Record<string, unknown>;
+        Relationships: [];
+      };
     };
     Views: {};
     Functions: {};
