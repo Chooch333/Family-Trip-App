@@ -11,7 +11,7 @@ Collaborative family trip planning PWA — Next.js, Supabase, Leaflet.js, Claude
 ## Stack
 - **Frontend:** Next.js 14 + Tailwind CSS
 - **Database:** Supabase (PostgreSQL)
-- **Maps:** Leaflet.js + OpenStreetMap
+- **Maps:** Google Maps JS API (dashboard) + MapLibre GL (cinematic)
 - **AI:** Claude via Anthropic API
 - **Hosting:** Vercel (free tier)
 - **Auth:** Invite-link (no passwords)
