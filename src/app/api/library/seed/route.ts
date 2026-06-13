@@ -92,7 +92,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "UNSPLASH_ACCESS_KEY not configured" }, { status: 500 });
   }
 
-  const origin = req.nextUrl.origin;
   const seeded: Record<string, number> = {};
   const skipped: string[] = [];
   let rateLimitRemaining = -1;
