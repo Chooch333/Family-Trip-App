@@ -136,15 +136,7 @@ export async function GET(req: NextRequest) {
     // ── Stage 2: AI vision pass — keep only high-confidence ──
     let scores: number[] = [];
     try {
-      const judgeRes = await fetch(`${origin}/api/photos/judge`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ images: gathered.map(g => g.url), job: jobFor(kind, key) }),
-      });
-      if (judgeRes.ok) {
-        const jData = await judgeRes.json();
-        scores = Array.isArray(jData.scores) ? jData.scores : [];
-      }
+      scores = await judgePhotos(gathered.map(g => g.url), jobFor(kind, key));
     } catch { /* no scores → nothing saved for this key */ }
 
     const rows = gathered
