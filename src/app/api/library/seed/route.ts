@@ -62,6 +62,17 @@ const KIND_MAP: Record<string, Record<string, string[]>> = {
   pride: PRIDE_QUERIES,
 };
 
+function jobFor(kind: string, key: string): string {
+  const readable = key.replace(/-/g, " ");
+  if (kind === "region") {
+    return `An evocative, high-quality landscape photo of the US "${readable}" region, good for a full-screen slide background behind white text. Atmospheric, good light and depth — not a close-up, not cluttered, not a portrait.`;
+  }
+  if (kind === "category") {
+    return `A beautiful, high-quality, appealing generic photo representing "${readable}" — a tasteful stand-in you'd be happy to show for a place of this type. Well-composed, warm, inviting. Not a logo, not text-heavy, not low quality.`;
+  }
+  return `A real-world photo representing "${readable}" pride: either a real "welcome to" road sign, OR an actual flag flying on a pole in a real outdoor scene. It must NOT be a flat full-bleed graphic flag, a vector/clip-art flag, or an illustration.`;
+}
+
 // Seeds photo_library with UNAPPROVED candidates for review in the photo widget.
 // Idempotent: any key that already has rows is skipped, so re-running is safe.
 // Batched by kind to stay inside the Unsplash hourly quota.
