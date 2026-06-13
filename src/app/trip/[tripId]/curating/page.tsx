@@ -292,11 +292,21 @@ export default function CuratingPage() {
           fetchOnePerQuery(gemsQueries, tripId),
         ]);
 
-        const allImages = [
+        let allImages = [
           ...destImgs.slice(0, 5),
           ...foodImgs.slice(0, 5),
           ...gemsImgs.slice(0, 5),
         ];
+
+        // Stage 2 gate for hype slides: vision-judge the gathered images in one batch, keep only high-confidence.
+        // Done before the thin-check so that if weak images are dropped, the regional shelf tops back up.
+        if (allImages.length > 0) {
+          const hypeJob = `An evocative, high-quality travel photo for a trip to "${dest}", good as a full-screen slide background behind white text. Atmospheric, good light and depth. A blurry, off-topic, text-heavy, or generic low-quality stock image should score low.`;
+          const hypeScores = await judgeMany(allImages, hypeJob);
+          if (hypeScores.length === allImages.length) {
+            allImages = allImages.filter((_, i) => hypeScores[i] >= 70);
+          }
+        }
 
         // Photo-thin destination? Top up from the curated regional mood shelf (the Peoria fix).
         // One tiny classification call, only when search came back thin.
