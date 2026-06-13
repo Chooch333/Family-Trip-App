@@ -133,6 +133,7 @@ export type Database = {
           source: string | null;
           attribution: string | null;
           approved: boolean;
+          vision_score: number | null;
           created_at: string;
         };
         Insert: Record<string, unknown>;
