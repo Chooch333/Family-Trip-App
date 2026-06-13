@@ -158,6 +158,23 @@ export default function CuratingPage() {
     }
     return results;
   }
+
+  // Stage 2 of the photo gate: ask the AI vision judge to score one image for a job (0-100).
+  const STOP_CONFIDENCE = 70;
+  async function judgeOne(url: string, job: string): Promise<number> {
+    try {
+      const res = await fetch("/api/photos/judge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: [url], job }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        return Array.isArray(d.scores) && d.scores.length > 0 ? (Number(d.scores[0]) || 0) : 0;
+      }
+    } catch { /* treat as fail */ }
+    return 0;
+  }
   const params = useParams();
   const tripId = params.tripId as string;
   const [trip, setTrip] = useState<Trip | null>(null);
