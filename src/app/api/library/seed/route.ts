@@ -108,30 +108,48 @@ export async function GET(req: NextRequest) {
       .eq("kind", kind).eq("key", key);
     if (count && count > 0) { skipped.push(key); continue; }
 
+    // ── Stage 1: gather candidates from Unsplash (orientation/quality filtered at source) ──
     const queries = queryMap[key];
-    const results = await Promise.all(queries.map(async (q) => {
+    const gathered: { url: string; attribution: string }[] = [];
+    for (const q of queries) {
+      if (quotaExhausted) break;
       try {
         const res = await fetch(`${UNSPLASH_BASE}?${new URLSearchParams({
-          query: q, per_page: "5", orientation: "landscape", content_filter: "high",
+          query: q, per_page: "4", orientation: "landscape", content_filter: "high",
         })}`, { headers: { Authorization: `Client-ID ${accessKey}`, "Accept-Version": "v1" } });
         const remaining = parseInt(res.headers.get("X-Ratelimit-Remaining") || "-1", 10);
         if (remaining >= 0) rateLimitRemaining = remaining;
-        if (res.status === 403 || res.status === 429) { quotaExhausted = true; return null; }
-        if (!res.ok) return null;
+        if (res.status === 403 || res.status === 429) { quotaExhausted = true; break; }
+        if (!res.ok) continue;
         const data = await res.json();
-        const photo = (data.results || [])[0];
-        if (!photo) return null;
-        return {
-          url: photo.urls?.regular || photo.urls?.full || "",
-          attribution: photo.user?.name ? `${photo.user.name} / Unsplash` : "Unsplash",
-        };
-      } catch { return null; }
-    }));
+        for (const photo of (data.results || [])) {
+          const url = photo.urls?.regular || photo.urls?.full;
+          if (url && !gathered.some(g => g.url === url)) {
+            gathered.push({ url, attribution: photo.user?.name ? `${photo.user.name} / Unsplash` : "Unsplash" });
+          }
+        }
+      } catch { /* skip this query */ }
+    }
+    if (gathered.length === 0) continue;
 
-    const rows = results
-      .filter((r): r is { url: string; attribution: string } => !!r && !!r.url)
-      .filter((r, i, arr) => arr.findIndex(x => x.url === r.url) === i) // dedupe within key
-      .map(r => ({ kind, key, url: r.url, source: "unsplash", attribution: r.attribution, approved: false }));
+    // ── Stage 2: AI vision pass — keep only high-confidence ──
+    let scores: number[] = [];
+    try {
+      const judgeRes = await fetch(`${origin}/api/photos/judge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: gathered.map(g => g.url), job: jobFor(kind, key) }),
+      });
+      if (judgeRes.ok) {
+        const jData = await judgeRes.json();
+        scores = Array.isArray(jData.scores) ? jData.scores : [];
+      }
+    } catch { /* no scores → nothing saved for this key */ }
+
+    const rows = gathered
+      .map((g, i) => ({ ...g, score: scores[i] ?? 0 }))
+      .filter(g => g.score >= HIGH_CONFIDENCE)
+      .map(g => ({ kind, key, url: g.url, source: "unsplash", attribution: g.attribution, approved: true, vision_score: g.score }));
 
     if (rows.length > 0) {
       const { error } = await supabase.from("photo_library").insert(rows);
