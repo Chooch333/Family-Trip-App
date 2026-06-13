@@ -20,11 +20,20 @@ export async function judgePhotos(images: string[], job: string): Promise<number
   });
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const callBody = JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 256, messages: [{ role: "user", content }] });
+    const opts = {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 256, messages: [{ role: "user", content }] }),
-    });
+      body: callBody,
+    };
+
+    // Retry on transient rate-limit / overload (429, 529) with backoff.
+    let response = await fetch("https://api.anthropic.com/v1/messages", opts);
+    for (let attempt = 0; (response.status === 429 || response.status === 529) && attempt < 3; attempt++) {
+      await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+      response = await fetch("https://api.anthropic.com/v1/messages", opts);
+    }
+
     if (!response.ok) {
       console.error("judgePhotos API error:", response.status, await response.text());
       return [];
