@@ -434,56 +434,60 @@ export default function CuratingPage() {
                 };
               });
               const { data: insertedStops } = await supabase.from("stops").insert(stopRows).select();
-              // F-075 + fallback chain: one real photo per stop.
-              // Tier 1: Google Places (the actual venue) → Tier 1.5: Wikimedia Commons by the stop's
-              // coordinates (real photos of obscure places) → Tier 2: curated category shelf.
-              // Fire-and-forget: generation speed is unaffected; a failed chain leaves photos empty.
+              // Two-stage photo gate, one real photo per stop:
+              // Stage 1 (source triage): Google Places venue photo → Commons by coordinates → curated shelf.
+              // Stage 2 (AI vision pass): Places/Commons candidates must clear a confidence score to be saved;
+              // if neither clears, fall back to the shelf (already vision-vetted at seed time); else save nothing.
+              // Fire-and-forget: generation speed is unaffected.
               if (insertedStops && insertedStops.length > 0) {
                 (async () => {
                   const rows = insertedStops as Stop[];
                   for (let k = 0; k < rows.length; k++) {
                     const row = rows[k];
                     if (row.stop_type === "transit") continue;
-                    // Match inserted row back to its generated stop (same order; name check as safety)
                     const srcStop = stops[k]?.name === row.name ? stops[k] : stops.find(s => s.name === row.name);
+                    const recognitionJob = `This image should show "${row.name}" in ${dayCity || dest} — the actual place: its storefront, sign, entrance, or a clearly identifiable real view of it. A generic stock photo, a wrong subject, or an unrelated scene should score low.`;
+                    let saved = false;
+
+                    // Tier 1: Google Places — photo of the actual venue, gated by vision
                     try {
-                      // Tier 1: Google Places — photo of the actual venue
                       const res = await fetch(`/api/places/photos?${new URLSearchParams({ query: `${row.name} ${dayCity || dest}`, count: "1", tripId })}`);
                       if (res.ok) {
                         const d = await res.json();
                         const url: string | undefined = (d.images || [])[0];
-                        if (url) {
+                        if (url && (await judgeOne(url, recognitionJob)) >= STOP_CONFIDENCE) {
                           await supabase.from("stops").update({ photos: [{ url }] }).eq("id", row.id);
-                          continue;
+                          saved = true;
                         }
                       }
                     } catch { /* fall through */ }
-                    try {
-                      // Tier 1.5: Wikimedia Commons — real photos near the stop's coordinates
-                      if (row.latitude && row.longitude) {
+
+                    // Tier 1.5: Wikimedia Commons — real photos near the coordinates, gated by vision
+                    if (!saved && row.latitude && row.longitude) {
+                      try {
                         const res = await fetch(`/api/commons/photos?${new URLSearchParams({ lat: String(row.latitude), lng: String(row.longitude), radius: "1000", count: "1" })}`);
                         if (res.ok) {
                           const d = await res.json();
                           const img = (d.images || [])[0];
-                          if (img?.url) {
+                          if (img?.url && (await judgeOne(img.url, recognitionJob)) >= STOP_CONFIDENCE) {
                             await supabase.from("stops").update({ photos: [{ url: img.url, attribution: img.attribution }] }).eq("id", row.id);
-                            continue;
+                            saved = true;
                           }
                         }
-                      }
-                    } catch { /* fall through */ }
-                    try {
-                      // Tier 2: curated category shelf — a beautiful generic for this kind of stop
-                      const cat = srcStop?.photo_category;
-                      if (cat) {
+                      } catch { /* fall through */ }
+                    }
+
+                    // Tier 2: curated category shelf — already vision-vetted at seed time (a mood stand-in, not the venue)
+                    if (!saved && srcStop?.photo_category) {
+                      try {
                         const { data: shelf } = await supabase.from("photo_library").select("url, attribution")
-                          .eq("kind", "category").eq("key", cat).eq("approved", true).limit(5);
+                          .eq("kind", "category").eq("key", srcStop.photo_category).eq("approved", true).limit(5);
                         if (shelf && shelf.length > 0) {
                           const pick = shelf[Math.floor(Math.random() * shelf.length)];
                           await supabase.from("stops").update({ photos: [{ url: pick.url, attribution: pick.attribution || undefined }] }).eq("id", row.id);
                         }
-                      }
-                    } catch { /* leave photos empty */ }
+                      } catch { /* leave photos empty */ }
+                    }
                   }
                 })();
               }
