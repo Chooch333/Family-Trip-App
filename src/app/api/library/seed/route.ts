@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 export const maxDuration = 60;
 
 const UNSPLASH_BASE = "https://api.unsplash.com/search/photos";
+const HIGH_CONFIDENCE = 70; // only photos scoring >= this are saved
 
 // ── Shelf definitions: key → search queries (top result of each becomes a candidate) ──
 
