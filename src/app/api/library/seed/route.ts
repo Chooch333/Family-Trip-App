@@ -157,5 +157,5 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ kind, seeded, skipped, rateLimitRemaining, quotaExhausted });
+  return NextResponse.json({ kind, threshold: HIGH_CONFIDENCE, seeded, skipped, rateLimitRemaining, quotaExhausted });
 }
