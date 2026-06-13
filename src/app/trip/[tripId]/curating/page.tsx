@@ -175,6 +175,23 @@ export default function CuratingPage() {
     } catch { /* treat as fail */ }
     return 0;
   }
+
+  // Batch variant: score several images in one vision call (used for hype slide filtering).
+  async function judgeMany(urls: string[], job: string): Promise<number[]> {
+    if (urls.length === 0) return [];
+    try {
+      const res = await fetch("/api/photos/judge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: urls, job }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        return Array.isArray(d.scores) ? d.scores.map((n: unknown) => Number(n) || 0) : [];
+      }
+    } catch { /* treat as fail */ }
+    return [];
+  }
   const params = useParams();
   const tripId = params.tripId as string;
   const [trip, setTrip] = useState<Trip | null>(null);
