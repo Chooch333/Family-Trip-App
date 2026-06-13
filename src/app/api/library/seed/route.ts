@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { judgePhotos } from "@/lib/judgePhotos";
 
 export const maxDuration = 60;
 
