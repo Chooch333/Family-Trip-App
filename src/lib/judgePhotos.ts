@@ -20,7 +20,7 @@ export async function judgePhotos(images: string[], job: string): Promise<number
   });
 
   try {
-    const callBody = JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 256, messages: [{ role: "user", content }] });
+    const callBody = JSON.stringify({ model: "claude-sonnet-5-5", max_tokens: 256, messages: [{ role: "user", content }] });
     const opts = {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
