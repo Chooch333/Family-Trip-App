@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
   try {
     const { messages, systemPrompt, max_tokens, tools } = await request.json();
     const body: Record<string, unknown> = {
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-5-5",
       max_tokens: max_tokens || 1024,
       system: systemPrompt,
       messages: messages.map((m: { role: string; content: string }) => ({ role: m.role, content: m.content })),
